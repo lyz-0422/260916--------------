@@ -1,0 +1,853 @@
+# -*- coding: utf-8 -*-
+"""
+即時從 Modbus 讀取場域資料，並直接產出 UI 需要的主檔：
+- sim_day_selected_result_v15_taipower_tou.csv
+
+功能：
+1. 原始資料持續累積保存
+2. 每天跨日後，自動把昨天整天的 UI 結果封存成日期檔
+3. UI 主檔只保留今天資料，讓畫面每天自動重新開始
+4. 強制輸出 UI 為 1 分鐘版本
+5. 若原始資料中間缺少分鐘點，自動補齊並內插
+6. 會補到「現在時間」，不是只補到最後一筆資料
+7. 連線前先檢查本機 IP / TCP Port，協助判斷不同網段或設備未開啟服務
+"""
+
+import os
+import time
+import struct
+import socket
+import pandas as pd
+from datetime import datetime, timedelta
+from pymodbus.client import ModbusTcpClient
+
+# ==============================
+# 使用者設定
+# ==============================
+ESS_IP = "192.168.1.200"
+ESS_PORT = 502
+METER_IP = "192.168.1.200"
+METER_PORT = 1602
+UNIT = 1
+POLL_SEC = 30
+CONTRACT_CAPACITY_KW = 100.0
+MAX_RAW_ROWS = 10000
+
+# 原始場域資料輸出（完整歷史）
+RAW_CSV_PATH = r"C:\Users\user\Desktop\test\modbus\場域運轉資訊_modbus.csv"
+
+# UI 即時主檔（只保留今天）
+UI_MAIN_CSV_PATH = r"C:\Users\user\Desktop\test\modbus\sim_day_selected_result_v15_taipower_tou.csv"
+
+# UI 即時分段檔（只保留今天）
+UI_SEG_CSV_PATH = r"C:\Users\user\Desktop\test\modbus\cost_savings_18_20_step.csv"
+
+# 每日封存資料夾
+ARCHIVE_DIR = r"C:\Users\user\Desktop\test\modbus"
+
+# 紀錄上次處理日期，避免重複封存
+LAST_UI_DAY_FILE = r"C:\Users\user\Desktop\test\modbus\last_ui_day.txt"
+
+WRITE_RAW_CSV = True
+WRITE_SEGMENT_CSV = True
+
+# UI 主檔只輸出今天資料
+UI_OUTPUT_TODAY_ONLY = True
+
+# 固定輸出 1 分鐘
+UI_AGG_FREQ = "1min"
+
+# 缺資料補值設定
+# 只允許短時間漏資料做線性內插；超過此分鐘數，視為長時間斷線/資料遺失，不補假資料
+MAX_INTERPOLATE_GAP_MIN = 3
+
+# 是否把 UI 時間軸補到「現在」
+# False：只補到最後一筆真實資料，避免設備斷線後一路產生假資料
+# True ：會補到現在時間，適合你想讓 UI 時間軸持續往前跑的情況
+UI_FILL_TO_NOW = False
+
+# 收益參數
+DR_DISCOUNT_RATE = 2.964   # NT$/kWh
+GRID_CHARGE_PRICE = 2.12   # 給 TUI.py 總賣電收益計算使用
+
+# DR 時段設定（需與 UI 一致）
+DR_START_HOUR = 11
+DR_START_MINUTE = 50
+DR_END_HOUR = 13
+DR_END_MINUTE = 50
+
+
+# ==============================
+# 工具函式
+# ==============================
+def ensure_parent_dir(path: str):
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+
+def ensure_dir(path: str):
+    os.makedirs(path, exist_ok=True)
+
+
+def safe_read_csv(path: str, **kwargs) -> pd.DataFrame:
+    if not os.path.exists(path):
+        return pd.DataFrame()
+    try:
+        return pd.read_csv(path, **kwargs)
+    except Exception:
+        return pd.DataFrame()
+
+
+def atomic_write_csv(df: pd.DataFrame, path: str):
+    ensure_parent_dir(path)
+    tmp = path + ".tmp"
+    df.to_csv(tmp, index=False, encoding="utf-8-sig")
+    os.replace(tmp, path)
+
+
+def atomic_write_text(text: str, path: str):
+    ensure_parent_dir(path)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+def read_last_ui_day():
+    if not os.path.exists(LAST_UI_DAY_FILE):
+        return None
+    try:
+        with open(LAST_UI_DAY_FILE, "r", encoding="utf-8") as f:
+            s = f.read().strip()
+            return s if s else None
+    except Exception:
+        return None
+
+
+def write_last_ui_day(day_str: str):
+    atomic_write_text(day_str, LAST_UI_DAY_FILE)
+
+
+def filter_today_by_col(df: pd.DataFrame, col: str) -> pd.DataFrame:
+    if df is None or df.empty or col not in df.columns:
+        return df
+
+    if not UI_OUTPUT_TODAY_ONLY:
+        return df
+
+    work = df.copy()
+    work[col] = pd.to_datetime(work[col], errors="coerce")
+    work = work.dropna(subset=[col])
+
+    today = pd.Timestamp.now().normalize()
+    tomorrow = today + pd.Timedelta(days=1)
+    return work[(work[col] >= today) & (work[col] < tomorrow)].copy()
+
+
+def filter_day_by_col(df: pd.DataFrame, col: str, target_date) -> pd.DataFrame:
+    if df is None or df.empty or col not in df.columns:
+        return pd.DataFrame()
+
+    work = df.copy()
+    work[col] = pd.to_datetime(work[col], errors="coerce")
+    work = work.dropna(subset=[col])
+
+    day_start = pd.Timestamp(target_date).normalize()
+    day_end = day_start + pd.Timedelta(days=1)
+    return work[(work[col] >= day_start) & (work[col] < day_end)].copy()
+
+
+def decode_int32_be(regs):
+    value = (regs[0] << 16) | regs[1]
+    if value >= 0x80000000:
+        value -= 0x100000000
+    return value
+
+
+def decode_float_be(regs):
+    raw = (regs[0] << 16) | regs[1]
+    return struct.unpack(">f", raw.to_bytes(4, byteorder="big"))[0]
+
+
+def get_bucket_minutes(freq: str) -> int:
+    freq = str(freq).strip().lower()
+    if freq.endswith("min"):
+        return int(freq.replace("min", ""))
+    raise ValueError(f"不支援的 UI_AGG_FREQ: {freq}")
+
+
+def get_bucket_hours(freq: str) -> float:
+    return get_bucket_minutes(freq) / 60.0
+
+
+def interpolate_only_short_gaps(series: pd.Series, max_gap_steps: int) -> pd.Series:
+    """
+    只對短缺口做線性內插。
+    若連續缺值長度 > max_gap_steps，整段保持 NaN，避免長時間斷線被補成假斜線。
+    """
+    s = pd.to_numeric(series, errors="coerce")
+    if s.empty:
+        return s
+
+    na = s.isna()
+    if not na.any():
+        return s
+
+    # 找出連續 NaN 區段
+    block_id = (na != na.shift(fill_value=False)).cumsum()
+    gap_len = na.groupby(block_id).transform("sum")
+    long_gap_mask = na & (gap_len > max_gap_steps)
+
+    out = s.interpolate(method="linear", limit_direction="both")
+    out[long_gap_mask] = pd.NA
+    return out
+
+
+# ==============================
+# 網路診斷工具
+# ==============================
+def get_local_ipv4_for_target(target_ip: str) -> str:
+    """
+    取得目前連往指定 target_ip 時，本機實際使用的 IPv4。
+    不需要 target 真正在線，只是利用系統路由判斷出站介面。
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect((target_ip, 1))
+        local_ip = s.getsockname()[0]
+        return local_ip
+    except Exception:
+        return ""
+    finally:
+        s.close()
+
+
+def ip_to_parts(ip: str):
+    try:
+        return [int(x) for x in ip.strip().split(".")]
+    except Exception:
+        return None
+
+
+def same_subnet_24(ip1: str, ip2: str) -> bool:
+    p1 = ip_to_parts(ip1)
+    p2 = ip_to_parts(ip2)
+    if not p1 or not p2 or len(p1) != 4 or len(p2) != 4:
+        return False
+    return p1[:3] == p2[:3]
+
+
+def test_tcp_port(ip: str, port: int, timeout: float = 2.0):
+    """
+    回傳 (ok, error_message)
+    """
+    try:
+        with socket.create_connection((ip, port), timeout=timeout):
+            return True, ""
+    except Exception as e:
+        return False, str(e)
+
+
+def print_network_diagnosis(device_name: str, target_ip: str, target_port: int):
+    print("=" * 60)
+    print(f"[診斷] {device_name} 連線檢查")
+    print(f"[診斷] 目標位址：{target_ip}:{target_port}")
+
+    local_ip = get_local_ipv4_for_target(target_ip)
+    if local_ip:
+        print(f"[診斷] 本機出站 IPv4：{local_ip}")
+        if same_subnet_24(local_ip, target_ip):
+            print("[診斷] 本機與設備看起來在同一個 /24 網段")
+        else:
+            print("[警告] 本機與設備不在同一個 /24 網段")
+            print("[警告] 例如你的電腦可能是 192.168.50.x，但設備是 192.168.1.x")
+            print("[建議] 請先把電腦 IP 改到與設備同網段，或修改設備 IP")
+    else:
+        print("[警告] 無法判斷本機出站 IPv4，可能沒有可用路由或網卡未連線")
+
+    ok, err = test_tcp_port(target_ip, target_port, timeout=2.0)
+    if ok:
+        print(f"[診斷] TCP Port 測試成功：{target_ip}:{target_port} 可連線")
+    else:
+        print(f"[警告] TCP Port 測試失敗：{target_ip}:{target_port}")
+        print(f"[警告] 錯誤訊息：{err}")
+        print("[建議] 請確認設備有上電、IP 正確、Port 正確、Modbus TCP 服務已開啟")
+    print("=" * 60)
+
+
+# ==============================
+# Modbus 讀值
+# ==============================
+def read_ess(client):
+    rr_soc = client.read_holding_registers(
+        address=199,
+        count=1,
+        device_id=UNIT
+    )
+
+    if rr_soc.isError():
+        raise RuntimeError(f"讀 SOC 失敗: {rr_soc}")
+
+    soc = rr_soc.registers[0] / 100.0
+
+    rr_p = client.read_holding_registers(
+        address=300,
+        count=2,
+        device_id=UNIT
+    )
+
+    if rr_p.isError():
+        raise RuntimeError(f"讀 ESS 功率失敗: {rr_p}")
+
+    p_kw = decode_int32_be(rr_p.registers) / 1000.0
+
+    return soc, p_kw
+
+
+def read_meter(client):
+    rr = client.read_holding_registers(
+        address=16450,
+        count=2,
+        device_id=UNIT
+    )
+
+    if rr.isError():
+        raise RuntimeError(f"讀電表功率失敗: {rr}")
+
+    power_kw = decode_float_be(rr.registers) / 1000.0
+
+    return power_kw
+
+# ==============================
+# 原始場域資料列
+# ==============================
+def build_raw_row(now: datetime, soc: float, ess_kw: float, adjusted_load_kw: float):
+    original_load_kw = adjusted_load_kw + ess_kw
+    return {
+        "資料時間": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "調度前(原始負載)(kW)": round(original_load_kw, 3),
+        "調節後負載(kW)": round(adjusted_load_kw, 3),
+        "契約容量 (kW)": CONTRACT_CAPACITY_KW,
+        "ESS功率(kW)": round(ess_kw, 3),
+        "SOC(%)": round(soc, 3),
+    }
+
+
+def append_raw_row(row: dict):
+    cols = [
+        "資料時間",
+        "調度前(原始負載)(kW)",
+        "調節後負載(kW)",
+        "契約容量 (kW)",
+        "ESS功率(kW)",
+        "SOC(%)",
+    ]
+    df_old = safe_read_csv(RAW_CSV_PATH, encoding="utf-8-sig")
+    if df_old.empty:
+        df_old = pd.DataFrame(columns=cols)
+
+    df_new = pd.concat([df_old, pd.DataFrame([row])], ignore_index=True)
+
+    if "資料時間" in df_new.columns:
+        df_new = df_new.drop_duplicates(subset=["資料時間"], keep="last").reset_index(drop=True)
+
+    if len(df_new) > MAX_RAW_ROWS:
+        df_new = df_new.iloc[-MAX_RAW_ROWS:].copy()
+
+    atomic_write_csv(df_new[cols], RAW_CSV_PATH)
+    return df_new[cols].copy()
+
+
+# ==============================
+# 將原始資料轉成 UI 主檔
+# ==============================
+def prepare_raw_df(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    required = [
+        "資料時間",
+        "調度前(原始負載)(kW)",
+        "調節後負載(kW)",
+        "契約容量 (kW)",
+        "ESS功率(kW)",
+        "SOC(%)",
+    ]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"原始資料缺少欄位: {missing}")
+
+    x = df.copy()
+    x["資料時間"] = pd.to_datetime(x["資料時間"], errors="coerce")
+    x = x.dropna(subset=["資料時間"]).sort_values("資料時間").reset_index(drop=True)
+
+    num_cols = required[1:]
+    for c in num_cols:
+        x[c] = pd.to_numeric(x[c], errors="coerce")
+
+    x["time_bucket"] = x["資料時間"].dt.floor(UI_AGG_FREQ)
+
+    x["actual_charge_kw_1m"] = (-x["ESS功率(kW)"]).clip(lower=0)
+    x["actual_discharge_kw_1m"] = x["ESS功率(kW)"].clip(lower=0)
+    x["p_batt_kw_1m"] = x["ESS功率(kW)"]
+
+    dt_hours = x["資料時間"].diff().dt.total_seconds() / 3600.0
+    dt_hours = dt_hours.where(dt_hours > 0)
+    fallback_dt_h = POLL_SEC / 3600.0
+    if dt_hours.notna().any():
+        fallback_dt_h = float(dt_hours.dropna().median())
+    x["sample_dt_h"] = dt_hours.fillna(fallback_dt_h).clip(lower=1.0 / 3600.0, upper=1.0)
+
+    hhmm = x["資料時間"].dt.hour + x["資料時間"].dt.minute / 60.0
+    dr_start = DR_START_HOUR + DR_START_MINUTE / 60.0
+    dr_end = DR_END_HOUR + DR_END_MINUTE / 60.0
+    x["is_dr_1m"] = ((hhmm >= dr_start) & (hhmm < dr_end)).astype(int)
+
+    x["discharge_kwh_1m"] = x["actual_discharge_kw_1m"] * x["sample_dt_h"]
+    x["discount_nt_1m"] = x["discharge_kwh_1m"] * DR_DISCOUNT_RATE * x["is_dr_1m"]
+    x["total_revenue_nt_1m"] = x["discount_nt_1m"]
+
+    return x
+
+
+def aggregate_ui_main(x: pd.DataFrame) -> pd.DataFrame:
+    if x.empty:
+        return pd.DataFrame()
+
+    bucket_hours = get_bucket_hours(UI_AGG_FREQ)
+
+    g = x.groupby("time_bucket", as_index=False).agg(
+        raw_load_kw=("調度前(原始負載)(kW)", "mean"),
+        adjusted_load_kw=("調節後負載(kW)", "mean"),
+        contract_capacity_kw=("契約容量 (kW)", "last"),
+        p_batt_kw=("p_batt_kw_1m", "mean"),
+        actual_charge_kw=("actual_charge_kw_1m", "mean"),
+        actual_discharge_kw=("actual_discharge_kw_1m", "mean"),
+        soc_pct=("SOC(%)", "mean"),
+        is_dr=("is_dr_1m", "max"),
+    )
+
+    g = g.sort_values("time_bucket").reset_index(drop=True)
+
+    start_time = g["time_bucket"].min()
+    last_real_time = g["time_bucket"].max()
+
+    if pd.isna(start_time) or pd.isna(last_real_time):
+        return pd.DataFrame()
+
+    if UI_FILL_TO_NOW:
+        end_time = pd.Timestamp.now().floor(UI_AGG_FREQ)
+        if end_time < last_real_time:
+            end_time = last_real_time
+    else:
+        # 只補到最後一筆真實資料，避免設備斷線後一路補到現在造成假資料
+        end_time = last_real_time
+
+    full_time_index = pd.date_range(
+        start=start_time,
+        end=end_time,
+        freq=UI_AGG_FREQ
+    )
+
+    g = g.set_index("time_bucket").reindex(full_time_index)
+    g.index.name = "time_bucket"
+    g = g.reset_index()
+
+    # reindex 後，raw_load_kw 有值代表該分鐘有真實聚合資料；NaN 代表此分鐘缺資料
+    g["has_real_data"] = g["raw_load_kw"].notna().astype(int)
+
+    interpolate_cols = [
+        "raw_load_kw",
+        "adjusted_load_kw",
+        "p_batt_kw",
+        "actual_charge_kw",
+        "actual_discharge_kw",
+        "soc_pct",
+    ]
+
+    limit_steps = max(1, int(MAX_INTERPOLATE_GAP_MIN / get_bucket_minutes(UI_AGG_FREQ)))
+
+    # 只補短缺口；長缺口保持 NaN，讓圖表可以斷線，不再畫出假的長斜線
+    for c in interpolate_cols:
+        g[c] = interpolate_only_short_gaps(g[c], limit_steps)
+
+    # 契約容量屬於固定設定值，可前後補，不會造成 ESS/SOC 假趨勢
+    g["contract_capacity_kw"] = pd.to_numeric(g["contract_capacity_kw"], errors="coerce").ffill().bfill()
+
+    # 補值後仍為 NaN 的地方，就是長時間資料遺失區間
+    g["data_gap"] = g["raw_load_kw"].isna().astype(int)
+
+    hhmm = g["time_bucket"].dt.hour + g["time_bucket"].dt.minute / 60.0
+    dr_start = DR_START_HOUR + DR_START_MINUTE / 60.0
+    dr_end = DR_END_HOUR + DR_END_MINUTE / 60.0
+    g["is_dr"] = ((hhmm >= dr_start) & (hhmm < dr_end)).astype(int)
+
+    # 缺資料區間不得計算成收益，避免把補值或空值當成實際放電
+    g["discharge_kwh_1m"] = g["actual_discharge_kw"].fillna(0) * bucket_hours
+    g["discount_10m"] = g["discharge_kwh_1m"] * DR_DISCOUNT_RATE * g["is_dr"]
+    g["total_revenue_10m"] = g["discount_10m"]
+
+    g["time"] = g["time_bucket"].dt.strftime("%Y-%m-%d %H:%M:%S")
+    g["pv_kw"] = 0.0
+    g["hour_float"] = g["time_bucket"].dt.hour + g["time_bucket"].dt.minute / 60.0
+    g["before_target"] = (g["time_bucket"].dt.hour < 6).astype(int)
+    g["soc"] = g["soc_pct"] / 100.0
+    g["min_soc_floor"] = 0.1
+    g["min_soc_floor_pct"] = 10.0
+    g["pv_to_batt_kw"] = 0.0
+    g["grid_to_batt_kw"] = g["actual_charge_kw"]
+    g["battery_export_kw"] = g["actual_discharge_kw"]
+    g["pv_export_kw"] = 0.0
+    g["grid_export_kw"] = 0.0
+    g["curtailed_pv_kw"] = 0.0
+    g["max_feasible_discharge_kw"] = g["actual_discharge_kw"]
+    g["grid_charge_need_kw"] = g["actual_charge_kw"]
+    g["price_buy"] = GRID_CHARGE_PRICE
+    g["sell_price_x"] = 0.0
+    g["price_tier"] = ""
+    g["energy_price"] = GRID_CHARGE_PRICE
+    g["charge_price"] = GRID_CHARGE_PRICE
+    g["sell_price_y"] = 0.0
+
+    g["grid_energy_kwh_10m"] = g["adjusted_load_kw"] * bucket_hours
+
+    g["baseline_cost_10m"] = 0.0
+    g["actual_grid_cost_10m"] = 0.0
+    g["basic_charge_10m"] = 0.0
+    g["battery_export_revenue_10m"] = g["discount_10m"]
+    g["pv_export_revenue_10m"] = 0.0
+    g["gross_export_revenue_10m"] = g["discount_10m"]
+    g["actual_export_revenue_10m"] = g["discount_10m"]
+    g["actual_net_cost_10m"] = 0.0
+    g["savings_10m"] = g["discount_10m"]
+    g["cum_baseline_cost"] = g["baseline_cost_10m"].cumsum()
+    g["cum_actual_net_cost"] = g["actual_net_cost_10m"].cumsum()
+    g["cum_savings"] = g["savings_10m"].cumsum()
+    g["cum_total_revenue"] = g["total_revenue_10m"].cumsum()
+
+    ordered_cols = [
+        "time",
+        "pv_kw",
+        "hour_float",
+        "is_dr",
+        "before_target",
+        "price_buy",
+        "sell_price_x",
+        "price_tier",
+        "soc",
+        "soc_pct",
+        "min_soc_floor",
+        "min_soc_floor_pct",
+        "p_batt_kw",
+        "pv_to_batt_kw",
+        "grid_to_batt_kw",
+        "battery_export_kw",
+        "pv_export_kw",
+        "grid_export_kw",
+        "curtailed_pv_kw",
+        "actual_charge_kw",
+        "actual_discharge_kw",
+        "max_feasible_discharge_kw",
+        "grid_charge_need_kw",
+        "energy_price",
+        "charge_price",
+        "sell_price_y",
+        "grid_energy_kwh_10m",
+        "baseline_cost_10m",
+        "actual_grid_cost_10m",
+        "basic_charge_10m",
+        "battery_export_revenue_10m",
+        "pv_export_revenue_10m",
+        "gross_export_revenue_10m",
+        "actual_export_revenue_10m",
+        "discount_10m",
+        "total_revenue_10m",
+        "actual_net_cost_10m",
+        "savings_10m",
+        "cum_baseline_cost",
+        "cum_actual_net_cost",
+        "cum_savings",
+        "cum_total_revenue",
+        "raw_load_kw",
+        "adjusted_load_kw",
+        "contract_capacity_kw",
+        "has_real_data",
+        "data_gap",
+    ]
+    return g[ordered_cols].copy()
+
+
+def build_segment_csv(main_df: pd.DataFrame) -> pd.DataFrame:
+    empty_cols = [
+        "segment", "start", "end", "x_progress", "ratio",
+        "discount_nt", "grid_charge_cost_nt", "total_revenue_nt"
+    ]
+
+    if main_df.empty:
+        return pd.DataFrame(columns=empty_cols)
+
+    step_minutes = get_bucket_minutes(UI_AGG_FREQ)
+
+    temp = main_df.copy()
+    temp["time"] = pd.to_datetime(temp["time"], errors="coerce")
+    temp = temp.dropna(subset=["time"]).sort_values("time").reset_index(drop=True)
+
+    dr_start = temp["time"].dt.normalize() + pd.Timedelta(hours=DR_START_HOUR, minutes=DR_START_MINUTE)
+    dr_end = temp["time"].dt.normalize() + pd.Timedelta(hours=DR_END_HOUR, minutes=DR_END_MINUTE)
+
+    seg = temp[(temp["time"] >= dr_start) & (temp["time"] < dr_end)].copy()
+    if seg.empty:
+        return pd.DataFrame(columns=empty_cols)
+
+    seg["segment"] = range(1, len(seg) + 1)
+    seg["start"] = seg["time"].dt.strftime("%H:%M")
+    seg["end"] = (seg["time"] + pd.Timedelta(minutes=step_minutes)).dt.strftime("%H:%M")
+    seg["x_progress"] = seg["segment"] / len(seg)
+    seg["ratio"] = seg["x_progress"]
+    seg["discount_nt"] = seg["discount_10m"].cumsum()
+    seg["grid_charge_cost_nt"] = 0.0
+    seg["total_revenue_nt"] = seg["total_revenue_10m"].cumsum()
+
+    return seg[[
+        "segment", "start", "end", "x_progress", "ratio",
+        "discount_nt", "grid_charge_cost_nt", "total_revenue_nt"
+    ]].copy()
+
+
+def get_empty_main_ui_df():
+    return pd.DataFrame(columns=[
+        "time", "pv_kw", "hour_float", "is_dr", "before_target", "price_buy",
+        "sell_price_x", "price_tier", "soc", "soc_pct", "min_soc_floor",
+        "min_soc_floor_pct", "p_batt_kw", "pv_to_batt_kw", "grid_to_batt_kw",
+        "battery_export_kw", "pv_export_kw", "grid_export_kw", "curtailed_pv_kw",
+        "actual_charge_kw", "actual_discharge_kw", "max_feasible_discharge_kw",
+        "grid_charge_need_kw", "energy_price", "charge_price", "sell_price_y",
+        "grid_energy_kwh_10m", "baseline_cost_10m", "actual_grid_cost_10m",
+        "basic_charge_10m", "battery_export_revenue_10m", "pv_export_revenue_10m",
+        "gross_export_revenue_10m", "actual_export_revenue_10m", "discount_10m",
+        "total_revenue_10m", "actual_net_cost_10m", "savings_10m",
+        "cum_baseline_cost", "cum_actual_net_cost", "cum_savings", "cum_total_revenue",
+        "raw_load_kw", "adjusted_load_kw", "contract_capacity_kw",
+        "has_real_data", "data_gap"
+    ])
+
+
+def get_empty_segment_ui_df():
+    return pd.DataFrame(columns=[
+        "segment", "start", "end", "x_progress", "ratio",
+        "discount_nt", "grid_charge_cost_nt", "total_revenue_nt"
+    ])
+
+
+def rebuild_ui_files_from_raw(raw_df: pd.DataFrame):
+    ui_raw_df = filter_today_by_col(raw_df, "資料時間")
+    x = prepare_raw_df(ui_raw_df)
+    main_ui = aggregate_ui_main(x)
+
+    if main_ui.empty:
+        main_ui = get_empty_main_ui_df()
+
+    atomic_write_csv(main_ui, UI_MAIN_CSV_PATH)
+
+    if WRITE_SEGMENT_CSV:
+        seg_ui = build_segment_csv(main_ui)
+        atomic_write_csv(seg_ui, UI_SEG_CSV_PATH)
+
+    return main_ui
+
+
+# ==============================
+# 每日封存機制
+# ==============================
+def archive_one_day_ui(raw_df: pd.DataFrame, target_date):
+    day_raw_df = filter_day_by_col(raw_df, "資料時間", target_date)
+    if day_raw_df.empty:
+        return False
+
+    x = prepare_raw_df(day_raw_df)
+    main_ui = aggregate_ui_main(x)
+    seg_ui = build_segment_csv(main_ui)
+
+    if main_ui.empty:
+        return False
+
+    ensure_dir(ARCHIVE_DIR)
+
+    date_str = pd.Timestamp(target_date).strftime("%Y-%m-%d")
+    archive_main_path = os.path.join(ARCHIVE_DIR, f"_{date_str}.csv")
+    archive_seg_path = os.path.join(ARCHIVE_DIR, f"{date_str}segment.csv")
+
+    atomic_write_csv(main_ui, archive_main_path)
+
+    if WRITE_SEGMENT_CSV:
+        atomic_write_csv(seg_ui, archive_seg_path)
+
+    print(f"[INFO] 已封存昨日 UI 主檔：{archive_main_path}")
+    if WRITE_SEGMENT_CSV:
+        print(f"[INFO] 已封存昨日 UI 分段檔：{archive_seg_path}")
+
+    return True
+
+
+def init_day_marker(raw_df: pd.DataFrame):
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    last_day = read_last_ui_day()
+    if last_day is None:
+        write_last_ui_day(today_str)
+        print(f"[INFO] 初始化日期標記：{today_str}")
+    else:
+        print(f"[INFO] 已讀取日期標記：{last_day}")
+
+
+def process_day_rollover_if_needed(raw_df: pd.DataFrame, now_dt: datetime):
+    today_str = now_dt.strftime("%Y-%m-%d")
+    last_day_str = read_last_ui_day()
+
+    if last_day_str is None:
+        write_last_ui_day(today_str)
+        return
+
+    if today_str == last_day_str:
+        return
+
+    try:
+        target_date = pd.Timestamp(last_day_str).date()
+    except Exception:
+        target_date = (now_dt - timedelta(days=1)).date()
+
+    print(f"[INFO] 偵測到跨日：{last_day_str} -> {today_str}")
+    archived = archive_one_day_ui(raw_df, target_date)
+
+    if not archived:
+        print(f"[WARN] 沒有找到可封存的 {last_day_str} 資料")
+
+    write_last_ui_day(today_str)
+
+    atomic_write_csv(get_empty_main_ui_df(), UI_MAIN_CSV_PATH)
+    if WRITE_SEGMENT_CSV:
+        atomic_write_csv(get_empty_segment_ui_df(), UI_SEG_CSV_PATH)
+
+    print("[INFO] UI 主檔已清空，等待今天的新資料累積")
+
+
+# ==============================
+# 主程式
+# ==============================
+def main():
+    ensure_parent_dir(UI_MAIN_CSV_PATH)
+    if WRITE_RAW_CSV:
+        ensure_parent_dir(RAW_CSV_PATH)
+    if WRITE_SEGMENT_CSV:
+        ensure_parent_dir(UI_SEG_CSV_PATH)
+    ensure_dir(ARCHIVE_DIR)
+
+    raw_init_df = safe_read_csv(RAW_CSV_PATH, encoding="utf-8-sig")
+    init_day_marker(raw_init_df)
+
+    # 先做網路診斷
+    print_network_diagnosis("ESS", ESS_IP, ESS_PORT)
+    print_network_diagnosis("METER", METER_IP, METER_PORT)
+
+    # timeout / retries 讓連線更穩定
+    ess_client = ModbusTcpClient(
+        ESS_IP,
+        port=ESS_PORT,
+        timeout=3
+    )
+    meter_client = ModbusTcpClient(
+        METER_IP,
+        port=METER_PORT,
+        timeout=3
+    )
+
+    print(f"[DEBUG] 嘗試連線 ESS: {ESS_IP}:{ESS_PORT}")
+    ess_ok = ess_client.connect()
+    print(f"[DEBUG] ESS connect() = {ess_ok}")
+
+    if not ess_ok:
+        local_ip = get_local_ipv4_for_target(ESS_IP)
+        print(f"[ERROR] ESS 連線失敗：{ESS_IP}:{ESS_PORT}")
+        if local_ip:
+            print(f"[DEBUG] 本機出站 IP：{local_ip}")
+            if not same_subnet_24(local_ip, ESS_IP):
+                print("[ERROR] 你的電腦與 ESS 不在同一網段，請先調整 IP")
+        print("[ERROR] 請先確認：")
+        print("        1. ESS 是否上電")
+        print("        2. ESS IP 是否真的是 192.168.1.200")
+        print("        3. ESS 的 Modbus TCP Port 是否真的是 502")
+        print("        4. 電腦是否已切到 192.168.1.x 網段")
+        return
+
+    print(f"[DEBUG] 嘗試連線 METER: {METER_IP}:{METER_PORT}")
+    meter_ok = meter_client.connect()
+    print(f"[DEBUG] METER connect() = {meter_ok}")
+
+    if not meter_ok:
+        local_ip = get_local_ipv4_for_target(METER_IP)
+        print(f"[ERROR] 電表連線失敗：{METER_IP}:{METER_PORT}")
+        if local_ip:
+            print(f"[DEBUG] 本機出站 IP：{local_ip}")
+            if not same_subnet_24(local_ip, METER_IP):
+                print("[ERROR] 你的電腦與電表不在同一網段，請先調整 IP")
+        print("[ERROR] 請先確認：")
+        print("        1. 電表是否上電")
+        print("        2. 電表 IP 是否正確")
+        print("        3. 電表 Port 是否真的是 1602")
+        return
+
+    print("[INFO] 系統開始運行：Modbus -> 原始CSV -> UI主檔")
+    print(f"[INFO] UI主檔輸出：{UI_MAIN_CSV_PATH}")
+    print(f"[INFO] 每日封存資料夾：{ARCHIVE_DIR}")
+    print(f"[INFO] 目前 UI 聚合頻率：{UI_AGG_FREQ}")
+
+    try:
+        while True:
+            try:
+                now = datetime.now()
+
+                soc, ess_kw = read_ess(ess_client)
+                adjusted_load_kw = read_meter(meter_client)
+                original_load_kw = adjusted_load_kw + ess_kw
+
+                print(
+                    f"[{now.strftime('%Y-%m-%d %H:%M:%S')}] "
+                    f"SOC={soc:.2f}% | ESS功率={ess_kw:.3f} kW | "
+                    f"調節後負載={adjusted_load_kw:.3f} kW | 調度前負載={original_load_kw:.3f} kW"
+                )
+
+                row = build_raw_row(now, soc, ess_kw, adjusted_load_kw)
+
+                if WRITE_RAW_CSV:
+                    raw_df = append_raw_row(row)
+                else:
+                    raw_df = safe_read_csv(RAW_CSV_PATH, encoding="utf-8-sig")
+                    raw_df = pd.concat([raw_df, pd.DataFrame([row])], ignore_index=True)
+                    if len(raw_df) > MAX_RAW_ROWS:
+                        raw_df = raw_df.iloc[-MAX_RAW_ROWS:].copy()
+
+                process_day_rollover_if_needed(raw_df, now)
+
+                main_ui = rebuild_ui_files_from_raw(raw_df)
+
+                if not main_ui.empty:
+                    latest_time = main_ui["time"].iloc[-1]
+                    print(f"[INFO] UI主檔已更新，最新時間點：{latest_time}")
+                else:
+                    print("[INFO] 今日 UI 主檔目前尚無可用資料")
+
+            except PermissionError as e:
+                print(f"[ERROR] 寫檔失敗（檔案被占用）: {e}")
+            except Exception as e:
+                print(f"[ERROR] 執行失敗: {e}")
+
+            time.sleep(POLL_SEC)
+
+    finally:
+        ess_client.close()
+        meter_client.close()
+        print("[INFO] Modbus 連線已關閉")
+
+
+if __name__ == "__main__":
+    main()

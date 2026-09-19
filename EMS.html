@@ -1,0 +1,1124 @@
+
+
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESS 儲能系統監控</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<style>
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Sans TC', sans-serif;
+  background: linear-gradient(135deg, #f5f7fa 0%, #e8eef3 100%);
+  margin: 0;
+  padding: 40px 20px;
+  min-height: 100vh;
+  position: relative;
+  font-size: 18px;
+}
+body::before, body::after {
+  content: ''; position: fixed; border-radius: 50%; pointer-events: none;
+}
+body::before {
+  top: -100px; right: -100px; width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(160,180,200,0.15) 0%, transparent 70%);
+}
+body::after {
+  bottom: -150px; left: -150px; width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(180,160,200,0.12) 0%, transparent 70%);
+}
+
+.container { max-width: 1400px; margin: 0 auto; position: relative; z-index: 1; }
+
+.header {
+  background: white; padding: 30px 40px; border-radius: 20px;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.06); margin-bottom: 30px;
+  border-left: 4px solid #7a8ba0;
+  display: flex; justify-content: space-between; align-items: center;
+  flex-wrap: wrap; gap: 20px;
+}
+.header h2 {
+  margin: 0 0 8px 0; color: #2c3e50; font-size: 36px;
+  font-weight: 600; font-family: 'Noto Serif TC', serif;
+}
+.header-subtitle { font-size: 18px; color: #95a5a6; font-weight: 300; }
+
+.debug-panel {
+  background: #f8f9fa; padding: 15px 20px; border-radius: 12px; margin-bottom: 20px;
+  border-left: 3px solid #e74c3c; font-family: monospace; font-size: 16px;
+  max-height: 200px; overflow-y: auto;
+}
+.debug-title { font-weight: 600; color: #e74c3c; margin-bottom: 8px; }
+.debug-item  { color: #5a6c7d; padding: 3px 0; }
+
+.time-granularity {
+  background: white; padding: 20px 35px; border-radius: 20px;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.06); margin-bottom: 20px;
+  display: flex; align-items: center; gap: 15px; flex-wrap: wrap;
+}
+.granularity-label { font-size: 18px; font-weight: 500; color: #5a6c7d; display: flex; align-items: center; gap: 8px; }
+.granularity-buttons { display: flex; gap: 10px; }
+.source-badge {
+  margin-left: auto; font-size: 15px; font-weight: 600; padding: 6px 14px;
+  border-radius: 10px; white-space: nowrap;
+}
+.source-badge.historical { background: #eef2f7; color: #5a6c7d; }
+.source-badge.live       { background: #fdecea; color: #c0392b; }
+.source-badge.mixed      { background: #f8f9fa; color: #95a5a6; }
+.source-badge.unknown    { background: #f8f9fa; color: #95a5a6; }
+
+.sim-badge {
+  display: inline-block; margin-left: 10px; padding: 2px 10px;
+  background: repeating-linear-gradient(45deg, #fdf1e6, #fdf1e6 6px, #fbe5ce 6px, #fbe5ce 12px);
+  border: 1px dashed #d68a3e; color: #b5651d; border-radius: 8px;
+  font-size: 14px; font-weight: 700; vertical-align: middle;
+}
+.sim-badge-sm { font-size: 11px; padding: 1px 7px; margin-left: 6px; }
+.btn-granularity {
+  padding: 10px 24px; border: 2px solid #e9ecef; border-radius: 12px;
+  background: white; color: #5a6c7d; cursor: pointer; font-weight: 500;
+  font-size: 18px; transition: all 0.3s ease; font-family: 'Noto Sans TC', sans-serif;
+}
+.btn-granularity:hover  { background: #f8f9fa; border-color: #7a8ba0; color: #2c3e50; transform: translateY(-2px); }
+.btn-granularity.active { background: #7a8ba0; color: white; border-color: #7a8ba0; box-shadow: 0 4px 12px rgba(122,139,160,0.3); }
+
+.timeline-nav {
+  background: white; padding: 25px 35px; border-radius: 20px;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.06); margin-bottom: 30px;
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+}
+.date-group {
+  display: flex; align-items: center; gap: 12px; padding: 10px 18px;
+  background: #f8f9fa; border-radius: 12px; border: 1px solid #e9ecef;
+}
+.date-icon  { font-size: 24px; color: #7a8ba0; }
+.date-group label { font-size: 18px; font-weight: 500; color: #5a6c7d; margin: 0; }
+.nav-controls { display: flex; gap: 12px; align-items: center; flex: 1; }
+.progress-indicator { flex: 1; min-width: 200px; }
+.progress-bar-container { width: 100%; height: 6px; background: #e9ecef; border-radius: 3px; overflow: hidden; }
+.progress-bar-fill { height: 100%; background: linear-gradient(90deg, #7a8ba0 0%, #95aac2 100%); border-radius: 3px; transition: width 0.3s ease; }
+.progress-text { font-size: 16px; color: #95a5a6; margin-top: 5px; text-align: center; }
+
+button {
+  padding: 10px 20px; border: 1px solid #d1d8dd; border-radius: 10px;
+  background: white; color: #5a6c7d; cursor: pointer; font-weight: 500;
+  font-size: 18px; transition: all 0.3s ease; font-family: 'Noto Sans TC', sans-serif;
+}
+button:hover:not(:disabled) { background: #f8f9fa; border-color: #7a8ba0; color: #2c3e50; transform: translateY(-1px); }
+button:disabled { background: #f8f9fa; color: #cbd5e0; border-color: #e9ecef; cursor: not-allowed; }
+.btn-primary { background: #7a8ba0; color: white; border-color: #7a8ba0; }
+.btn-primary:hover:not(:disabled) { background: #6a7b90; border-color: #6a7b90; color: white; }
+
+select {
+  padding: 8px 14px; border-radius: 10px; border: 1px solid #d1d8dd;
+  font-size: 18px; background: white; color: #5a6c7d; cursor: pointer;
+  transition: all 0.3s ease; font-family: 'Noto Sans TC', sans-serif;
+}
+select:hover { border-color: #7a8ba0; }
+select:focus { outline: none; border-color: #7a8ba0; box-shadow: 0 0 0 3px rgba(122,139,160,0.1); }
+
+.stats-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 20px;
+}
+.stat-card {
+  background: white; padding: 25px; border-radius: 16px;
+  box-shadow: 0 2px 15px rgba(0,0,0,0.05); transition: all 0.3s ease;
+  border-top: 3px solid transparent; display: flex; flex-direction: column; justify-content: center;
+}
+.stat-card:nth-child(1) { border-top-color: #8e9eab; }
+.stat-card:nth-child(2) { border-top-color: #a8b5c0; }
+.stat-card:nth-child(3) { border-top-color: #c2cbd5; }
+.stat-card:nth-child(4) { border-top-color: #95aac2; }
+.stat-card:hover { transform: translateY(-4px); box-shadow: 0 4px 25px rgba(0,0,0,0.1); }
+.stat-label { font-size: 17px; color: #95a5a6; font-weight: 400; margin-bottom: 10px; }
+.stat-value { font-size: 32px; font-weight: 600; color: #2c3e50; font-family: 'Noto Serif TC', serif; }
+
+.data-cards {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 15px; margin-bottom: 15px;
+}
+.data-card {
+  background: white; padding: 20px; border-radius: 14px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.04); transition: all 0.3s ease;
+  border-left: 3px solid #dfe6e9; display: flex; flex-direction: column;
+  justify-content: center; min-height: 90px; position: relative;
+}
+.data-card:hover { transform: translateY(-3px); box-shadow: 0 4px 20px rgba(0,0,0,0.08); border-left-color: #7a8ba0; }
+.data-card.anomaly { border-left-color: #e74c3c; background: #fff5f5; }
+.data-card.status-info-card { border-left-color: #3498db; background: #f4f9fd; }
+.data-card.status-warn-card { border-left-color: #f39c12; background: #fffaf0; }
+.data-label { font-size: 15px; color: #95a5a6; font-weight: 400; display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.data-value { font-size: 22px; font-weight: 600; color: #2c3e50; font-family: 'Noto Serif TC', serif; }
+.anomaly-badge {
+  display: inline-block; padding: 2px 8px; background: #e74c3c; color: white;
+  border-radius: 8px; font-size: 13px; margin-left: 6px; font-weight: 600;
+}
+.anomaly-type-badge {
+  position: absolute; top: 8px; right: 8px;
+  padding: 2px 8px; background: #e67e22; color: white;
+  border-radius: 8px; font-size: 13px; font-weight: 600;
+  max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.anomaly-type-badge.status-info { background: #3498db; }
+.anomaly-type-badge.status-warn { background: #f39c12; }
+
+.chart-container {
+  background: white; padding: 35px; border-radius: 20px;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.06); margin-bottom: 30px;
+}
+.chart-header {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #f1f3f5;
+  gap: 16px; flex-wrap: wrap;
+}
+.chart-title { font-size: 22px; font-weight: 600; color: #2c3e50; font-family: 'Noto Serif TC', serif; }
+.chart-subtitle { font-size: 16px; color: #95a5a6; margin-top: 4px; }
+.legend-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 16px; color: #5a6c7d; }
+.legend-dot  { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+
+.chart-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+
+.anomaly-toolbar {
+  background: white; padding: 20px 35px; border-radius: 20px;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.06); margin-bottom: 20px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+}
+.anomaly-nav { display: flex; align-items: center; gap: 14px; }
+.anomaly-counter { font-size: 16px; color: #5a6c7d; font-weight: 500; min-width: 130px; text-align: center; }
+.anomaly-export { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn-tiff {
+  padding: 8px 16px; border-radius: 10px; border: 1px solid #7a8ba0;
+  background: white; color: #7a8ba0; font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: all 0.25s ease; white-space: nowrap;
+  font-family: 'Noto Sans TC', sans-serif; display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-tiff:hover { background: #7a8ba0; color: #fff; box-shadow: 0 3px 10px rgba(122,139,160,0.35); }
+.btn-tiff:active { transform: translateY(1px); }
+.btn-tiff.saved { border-color: #27ae60; color: #27ae60; }
+.btn-tiff-full { font-size: 16px; padding: 10px 20px; flex-shrink: 0; }
+
+.trend-indicator {
+  position: fixed; bottom: 30px; right: 30px; background: white;
+  padding: 20px 25px; border-radius: 16px; box-shadow: 0 4px 25px rgba(0,0,0,0.1);
+  min-width: 200px; z-index: 1000;
+}
+.trend-title { font-size: 16px; color: #95a5a6; font-weight: 500; margin-bottom: 12px; text-transform: uppercase; }
+.trend-value { font-size: 28px; font-weight: 600; color: #2c3e50; font-family: 'Noto Serif TC', serif; }
+.trend-change { font-size: 17px; margin-top: 8px; }
+.trend-up   { color: #27ae60; }
+.trend-down { color: #e74c3c; }
+.trend-flat { color: #95a5a6; }
+
+.hidden { display: none !important; }
+
+@keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+.fade-in { animation: fadeIn 0.5s ease; }
+
+@media(max-width:1200px) {
+  .stats-grid { grid-template-columns: repeat(2,1fr); }
+}
+@media(max-width:768px) {
+  body { padding: 20px 15px; }
+  .header { padding: 20px 25px; }
+  .time-granularity, .timeline-nav { flex-direction: column; align-items: stretch; }
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+  .data-cards  { grid-template-columns: repeat(2,1fr); }
+  .chart-container { padding: 20px; }
+  .trend-indicator { position: relative; bottom: auto; right: auto; margin-bottom: 20px; }
+  .chart-actions { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div id="dashboardExportArea">
+
+  <div class="header fade-in">
+    <div>
+      <h2>ESS 儲能系統監控儀表板</h2>
+      <div class="header-subtitle" id="lastUpdate">正在連接 Firebase...</div>
+    </div>
+    <button class="btn-tiff btn-tiff-full no-export" id="tiffBtnFull" onclick="downloadChartAsTiff('dashboardExportArea','ESS_儀表板_整頁', 'tiffBtnFull')">📸 下載整頁 TIFF</button>
+  </div>
+
+  <div class="debug-panel fade-in" id="debugPanel">
+    <div class="debug-title">🔍 系統除錯資訊</div>
+    <div id="debugLog"></div>
+  </div>
+
+  <div class="time-granularity fade-in">
+    <div class="granularity-label"><span>📊</span>分析粒度</div>
+    <div class="granularity-buttons">
+      <button class="btn-granularity active" onclick="setMode('day',this)">本日</button>
+      <button class="btn-granularity" onclick="setMode('week',this)">本週</button>
+      <button class="btn-granularity" onclick="setMode('month',this)">本月</button>
+    </div>
+  </div>
+
+  <div class="time-granularity fade-in" id="sourceRow">
+    <div class="granularity-label"><span>🗂️</span>資料來源</div>
+    <div class="granularity-buttons">
+      <button class="btn-granularity active" onclick="setSource('all',this)">全部</button>
+      <button class="btn-granularity" onclick="setSource('historical',this)">📁 歷史訓練資料</button>
+      <button class="btn-granularity" onclick="setSource('live',this)">🔴 即時監測資料</button>
+    </div>
+    <span id="sourceBadge" class="source-badge"></span>
+  </div>
+
+  <div class="timeline-nav fade-in">
+    <div class="date-group">
+      <span class="date-icon">📅</span>
+      <label id="dateLabel">日期</label>
+      <select id="dateSelect"></select>
+    </div>
+    <div class="nav-controls" id="navControls">
+      <button id="prev">← 上一筆</button>
+      <button id="next">下一筆 →</button>
+      <div class="progress-indicator">
+        <div class="progress-bar-container"><div id="progressBar" class="progress-bar-fill" style="width:0%"></div></div>
+        <div id="progressText" class="progress-text">0 / 0</div>
+      </div>
+    </div>
+    <button onclick="resetZoom()" class="btn-primary">重置視圖</button>
+  </div>
+
+  <div class="anomaly-toolbar fade-in no-export" id="anomalyToolbar">
+    <div class="anomaly-nav">
+      <button onclick="jumpAnomaly(-1)">⏮ 上一個異常</button>
+      <span id="anomalyCounter" class="anomaly-counter">尚無異常資料</span>
+      <button onclick="jumpAnomaly(1)">下一個異常 ⏭</button>
+    </div>
+    <div class="anomaly-export">
+      <button class="btn-tiff" id="tiffBtnAnomaly" onclick="downloadChartAsTiff('anomalyDetailArea','異常詳細圖', 'tiffBtnAnomaly')">📷 下載目前異常詳細圖</button>
+      <button class="btn-tiff" id="tiffBtnAllAnomalies" onclick="exportAllAnomalies()">📦 匯出本日所有異常 TIFF</button>
+    </div>
+  </div>
+
+  <div class="stats-grid fade-in">
+    <div class="stat-card"><div class="stat-label">平均原始負載</div><div id="sAvgOrig" class="stat-value">--</div></div>
+    <div class="stat-card"><div class="stat-label">尖峰原始負載</div><div id="sMaxOrig" class="stat-value">--</div></div>
+    <div class="stat-card"><div class="stat-label">平均 SOC</div>   <div id="sAvgSOC"  class="stat-value">--</div></div>
+    <div class="stat-card"><div class="stat-label">平均 ESS 功率</div><div id="sAvgESS" class="stat-value">--</div></div>
+  </div>
+
+  <div id="anomalyDetailArea">
+
+  <div class="data-cards fade-in" id="dataCards1">
+    <div class="data-card">
+      <div class="data-label"><span class="dot" style="background:#546e7a"></span>時間</div>
+      <div id="dTime" class="data-value" style="font-size:17px">--</div>
+    </div>
+    <div class="data-card">
+      <div class="data-label"><span class="dot" style="background:#2ecc71"></span>原始負載 (kW)</div>
+      <div id="dBeforeLoad" class="data-value">--</div>
+    </div>
+    <div class="data-card">
+      <div class="data-label"><span class="dot" style="background:#fbc02d"></span>調節後負載 (kW)</div>
+      <div id="dAfterLoad" class="data-value">--</div>
+    </div>
+    <div class="data-card">
+      <div class="data-label"><span class="dot" style="background:#ff4757"></span>契約容量 (kW)</div>
+      <div id="dContract" class="data-value">--</div>
+    </div>
+    <div class="data-card">
+      <div class="data-label"><span class="dot" style="background:#00bcd4"></span>ESS 功率 (kW)</div>
+      <div id="dEssPower" class="data-value">--</div>
+    </div>
+    <div class="data-card">
+      <div class="data-label"><span class="dot" style="background:#e74c3c"></span>超約量 (kW)</div>
+      <div id="dOverContract" class="data-value">--</div>
+    </div>
+  </div>
+
+  <div class="data-cards fade-in" id="dataCards2">
+    <div class="data-card">
+      <div class="data-label"><span class="dot" style="background:#ffd93d"></span>SOC (%)</div>
+      <div id="dSOC" class="data-value">--</div>
+    </div>
+    <div class="data-card">
+      <div class="data-label"><span class="dot" style="background:#a29bfe"></span>SOH (%)<span class="sim-badge sim-badge-sm">模擬</span></div>
+      <div id="dSOH" class="data-value">--</div>
+    </div>
+    <div class="data-card">
+      <div class="data-label"><span class="dot" style="background:#fd79a8"></span>Cell V Diff (V)<span class="sim-badge sim-badge-sm">模擬</span></div>
+      <div id="dCellV" class="data-value">--</div>
+    </div>
+    <div class="data-card">
+      <div class="data-label"><span class="dot" style="background:#e74c3c"></span>自放電率<span class="sim-badge sim-badge-sm">模擬</span></div>
+      <div id="dSelfDischarge" class="data-value">--</div>
+    </div>
+    <div class="data-card" id="dAnomalyCard">
+      <div class="data-label"><span class="dot" style="background:#e74c3c"></span>異常狀態</div>
+      <div id="dAnomalyVal" class="data-value">--</div>
+    </div>
+  </div>
+
+  <div class="chart-container fade-in" id="chartCard1">
+    <div class="chart-header">
+      <div>
+        <div class="chart-title" id="chart1Title">用電曲線（調度前後 + 契約容量）</div>
+        <div class="chart-subtitle">異常時間點以彩色圓點標示於調節後負載曲線上</div>
+      </div>
+      <div class="legend-row">
+        <div class="legend-item"><span class="legend-dot" style="background:#2ecc71"></span>原始負載</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#fbc02d"></span>調節後負載</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#ff4757"></span>契約容量</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#a29bfe"></span>Cell不一致</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#e74c3c"></span>內部短路</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#fbc02d;outline:1px solid #b8860b;outline-offset:2px"></span>SOH衰減</div>
+        <span class="sim-badge sim-badge-sm" title="這三種異常的判斷依據主要來自模擬的 SOH/CellV/自放電率，非現場實測感測值">⚠ 判斷依據含模擬特徵</span>
+      </div>
+      <div class="chart-actions">
+        <button class="btn-tiff" id="tiffBtn1" onclick="downloadChartAsTiff('chartCard1','用電曲線_調度前後', 'tiffBtn1')">⬇ 下載 TIFF</button>
+      </div>
+    </div>
+    <canvas id="chart1" height="100"></canvas>
+  </div>
+
+  </div>
+
+  <div class="chart-container fade-in" id="chartCard2">
+    <div class="chart-header">
+      <div>
+        <div class="chart-title">ESS 儲能系統狀態（功率 + SOC）</div>
+        <div class="chart-subtitle">左軸：ESS 功率 (kW)　右軸：SOC (%)</div>
+      </div>
+      <div class="legend-row">
+        <div class="legend-item"><span class="legend-dot" style="background:#00bcd4"></span>ESS 功率</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#ffd93d"></span>SOC</div>
+      </div>
+      <div class="chart-actions">
+        <button class="btn-tiff" id="tiffBtn2" onclick="downloadChartAsTiff('chartCard2','ESS功率_SOC', 'tiffBtn2')">⬇ 下載 TIFF</button>
+      </div>
+    </div>
+    <canvas id="chart2" height="100"></canvas>
+  </div>
+
+  <div class="chart-container fade-in" id="chartCard3">
+    <div class="chart-header">
+      <div>
+        <div class="chart-title">電池健康診斷（SOH + 自放電率）<span class="sim-badge">⚠ 模擬數據</span></div>
+        <div class="chart-subtitle">左軸：SOH (%)　右軸：自放電率 (%，異常時會明顯飆高)　— 現場 CSV/Modbus 無電池內部感測值，此圖為模擬產生，非實測</div>
+      </div>
+      <div class="legend-row">
+        <div class="legend-item"><span class="legend-dot" style="background:#a29bfe"></span>SOH</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#e74c3c"></span>自放電率</div>
+      </div>
+      <div class="chart-actions">
+        <button class="btn-tiff" id="tiffBtn3" onclick="downloadChartAsTiff('chartCard3','SOH_自放電率', 'tiffBtn3')">⬇ 下載 TIFF</button>
+      </div>
+    </div>
+    <canvas id="chart3" height="100"></canvas>
+  </div>
+
+  </div>
+
+  <div class="trend-indicator fade-in" id="trendIndicator">
+    <div class="trend-title">當前調節後負載趨勢</div>
+    <div class="trend-value" id="trendValue">--</div>
+    <div class="trend-change" id="trendChange"><span class="trend-flat">--</span></div>
+  </div>
+
+</div>
+
+<script type="module">
+import { initializeApp }      from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js";
+import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-database.js";
+// ★ App Check 已停用（見下方 ENABLE_APP_CHECK）。essssimulation3 這個新專案如果你有另外設定
+//   reCAPTCHA v3 的 App Check，把 ENABLE_APP_CHECK 改成 true，並填入你自己的 site key。
+import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app-check.js";
+
+// ══════════════════════════════════════════════════════════════════
+// ★★★ 請改成你自己的 Firebase「網頁 App」設定 ★★★
+// 這組設定跟 Colab/Notebook 裡用的服務帳號金鑰 JSON 是兩回事，
+// 要去 Firebase 主控台 →（齒輪）專案設定 → 一般 → 你的應用程式 → SDK 設定與程式碼
+// 複製「網頁應用程式」的 firebaseConfig 貼進來。
+// databaseURL 已經照你 notebook 裡的 FIREBASE_DATABASE_URL 幫你填好了，
+// 其餘 apiKey / appId / messagingSenderId / storageBucket 需要你自己補上。
+// ══════════════════════════════════════════════════════════════════
+const ENABLE_APP_CHECK = false; // 如果 essssimulation3 這個專案有另外設定 App Check，改成 true 並填 RECAPTCHA_SITE_KEY
+const RECAPTCHA_SITE_KEY = "PUT_YOUR_RECAPTCHA_V3_SITE_KEY_HERE";
+
+const firebaseConfig = {
+  apiKey: "PUT_YOUR_API_KEY_HERE",
+  authDomain: "essssimulation3.firebaseapp.com",
+  databaseURL: "https://essssimulation3-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "essssimulation3",
+  storageBucket: "essssimulation3.firebasestorage.app",
+  messagingSenderId: "PUT_YOUR_SENDER_ID_HERE",
+  appId: "PUT_YOUR_APP_ID_HERE",
+};
+
+const S = { data:[], filtered:[], agg:[], idx:0, mode:'day', sourceFilter:'all', charts:{} };
+
+// ★ 歷史 CSV 匯入的資料涵蓋到這一天（含）；沒有 source 欄位的舊資料用這個日期回退判斷
+//   是「歷史訓練資料」還是「即時監測資料」。之後 notebook 端記得加 source 欄位就不用靠這個猜了。
+const HISTORICAL_CUTOFF_DATE = '2026-08-31';
+
+// v6：PV 相關的三種異常類型已移除，只剩電池診斷三種
+const ANOMALY_COLORS = {
+  normal:              null,
+  cell_inconsistency:  '#a29bfe',
+  internal_short:      '#e74c3c',
+  soh_degradation:     '#fbc02d',
+};
+
+// v6 即時運行時，is_anomaly 仍是 0，但 anomaly_type 可能是這兩種「系統狀態」而非真異常
+const STATUS_BADGES = {
+  ACCUMULATING:          { text: '📊 累積資料中', cls: 'status-info' },
+  EMS_DISABLED_NO_MODEL: { text: '⚠ 無SOC，未推論', cls: 'status-warn' },
+};
+
+Chart.defaults.color       = '#5a6c7d';
+Chart.defaults.borderColor = '#e9ecef';
+Chart.defaults.font.family = "'Noto Sans TC', sans-serif";
+Chart.defaults.font.size   = 15;
+
+function log(msg, type='info') {
+  const el    = document.getElementById('debugLog');
+  const color = type==='ok' ? '#27ae60' : type==='err' ? '#e74c3c' : '#5a6c7d';
+  const ts    = new Date().toLocaleTimeString('zh-TW');
+  el.innerHTML += `<div class="debug-item" style="color:${color}">[${ts}] ${msg}</div>`;
+  el.scrollTop  = el.scrollHeight;
+}
+
+// ══════════════════════════════════════════
+// ★ 異常導覽：跳到上一個/下一個異常，並自動顯示 Chart.js 內建提示框
+// ══════════════════════════════════════════
+function getAnomalyIndices() {
+  const arr = [];
+  S.filtered.forEach((d, i) => { if (d.is_anomaly === 1) arr.push(i); });
+  return arr;
+}
+
+function syncAnomalyTooltip() {
+  const chart = S.charts.c1;
+  if (!chart || S.mode !== 'day' || !S.filtered.length) return;
+  const d = S.filtered[S.idx];
+  if (d && d.is_anomaly === 1) {
+    const elements = chart.data.datasets.map((_, dsIdx) => ({ datasetIndex: dsIdx, index: S.idx }));
+    const point = chart.getDatasetMeta(0).data[S.idx];
+    if (point) {
+      chart.tooltip.setActiveElements(elements, { x: point.x, y: point.y });
+      chart.update();
+    }
+  } else {
+    chart.tooltip.setActiveElements([], { x: 0, y: 0 });
+    chart.update();
+  }
+}
+
+function updateAnomalyCounter() {
+  const el = document.getElementById('anomalyCounter');
+  if (!el) return;
+  if (S.mode !== 'day') { el.textContent = '請切換到本日模式'; return; }
+  const idxs = getAnomalyIndices();
+  if (!idxs.length) { el.textContent = '本日無異常'; return; }
+  const pos = idxs.indexOf(S.idx);
+  el.textContent = pos >= 0 ? `異常 ${pos+1} / ${idxs.length}（目前）` : `本日共 ${idxs.length} 個異常`;
+}
+
+function refreshAnomalyState() {
+  syncAnomalyTooltip();
+  updateAnomalyCounter();
+}
+
+window.jumpAnomaly = (dir) => {
+  if (S.mode !== 'day' || !S.filtered.length) return;
+  const idxs = getAnomalyIndices();
+  if (!idxs.length) { log('本日沒有異常資料點', 'err'); document.getElementById('debugPanel').style.display='block'; return; }
+  let pos = idxs.indexOf(S.idx);
+  if (pos === -1) {
+    pos = idxs.findIndex(i => i >= S.idx);
+    if (pos === -1) pos = idxs.length - 1;
+    if (dir < 0) pos = Math.max(0, pos - 1);
+  } else {
+    pos = (pos + dir + idxs.length) % idxs.length;
+  }
+  S.idx = idxs[pos];
+  selectTime(S.filtered[S.idx].ts.slice(11,16));
+  updateCard();
+  updateTrend();
+  refreshAnomalyState();
+};
+
+// ══════════════════════════════════════════
+// ★ TIFF 匯出工具（未壓縮 baseline TIFF，讀取 canvas 像素資料自行組檔）
+// ══════════════════════════════════════════
+function canvasToTiffBlob(canvas, bgColor = '#ffffff') {
+  const w = canvas.width, h = canvas.height;
+
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const octx = off.getContext('2d');
+  octx.fillStyle = bgColor;
+  octx.fillRect(0, 0, w, h);
+  octx.drawImage(canvas, 0, 0);
+
+  const imgData = octx.getImageData(0, 0, w, h).data;
+
+  const samplesPerPixel = 3;
+  const rowBytes = w * samplesPerPixel;
+  const stripByteCount = rowBytes * h;
+
+  const pixelBuffer = new Uint8Array(stripByteCount);
+  let p = 0;
+  for (let i = 0; i < imgData.length; i += 4) {
+    pixelBuffer[p++] = imgData[i];
+    pixelBuffer[p++] = imgData[i + 1];
+    pixelBuffer[p++] = imgData[i + 2];
+  }
+
+  const entries = [
+    [256, 3, 1, w],
+    [257, 3, 1, h],
+    [258, 3, 3, 'bps'],
+    [259, 3, 1, 1],
+    [262, 3, 1, 2],
+    [273, 4, 1, 'strip'],
+    [277, 3, 1, samplesPerPixel],
+    [278, 3, 1, h],
+    [279, 4, 1, stripByteCount],
+    [282, 5, 1, 'xres'],
+    [283, 5, 1, 'yres'],
+    [284, 3, 1, 1],
+    [296, 3, 1, 2],
+  ];
+
+  const numEntries = entries.length;
+  const headerSize = 8;
+  const ifdSize = 2 + numEntries * 12 + 4;
+
+  let extraOffset = headerSize + ifdSize;
+  const bpsOffset  = extraOffset; extraOffset += 6;
+  const xresOffset = extraOffset; extraOffset += 8;
+  const yresOffset = extraOffset; extraOffset += 8;
+  const stripOffset = extraOffset;
+
+  const totalSize = stripOffset + stripByteCount;
+  const buffer = new ArrayBuffer(totalSize);
+  const view = new DataView(buffer);
+
+  view.setUint8(0, 0x49); view.setUint8(1, 0x49);
+  view.setUint16(2, 42, true);
+  view.setUint32(4, headerSize, true);
+
+  let offset = headerSize;
+  view.setUint16(offset, numEntries, true); offset += 2;
+
+  const offsetMap = { bps: bpsOffset, strip: stripOffset, xres: xresOffset, yres: yresOffset };
+
+  for (const [tag, type, count, val] of entries) {
+    const value = (typeof val === 'string') ? offsetMap[val] : val;
+    view.setUint16(offset, tag, true);   offset += 2;
+    view.setUint16(offset, type, true);  offset += 2;
+    view.setUint32(offset, count, true); offset += 4;
+    view.setUint32(offset, value, true); offset += 4;
+  }
+  view.setUint32(offset, 0, true); offset += 4;
+
+  view.setUint16(bpsOffset,     8, true);
+  view.setUint16(bpsOffset + 2, 8, true);
+  view.setUint16(bpsOffset + 4, 8, true);
+
+  view.setUint32(xresOffset, 300, true); view.setUint32(xresOffset + 4, 1, true);
+  view.setUint32(yresOffset, 300, true); view.setUint32(yresOffset + 4, 1, true);
+
+  new Uint8Array(buffer, stripOffset, stripByteCount).set(pixelBuffer);
+
+  return new Blob([buffer], { type: 'image/tiff' });
+}
+
+async function captureContainerAsTiff(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) throw new Error('找不到匯出區域: ' + containerId);
+  if (typeof html2canvas === 'undefined') {
+    throw new Error('html2canvas 尚未載入，請確認網路可連到 cdn.jsdelivr.net 後重新整理頁面');
+  }
+
+  const captured = await html2canvas(container, {
+    backgroundColor: '#ffffff',
+    scale: 2,
+    useCORS: true,
+    ignoreElements: (el) => el.classList && (el.classList.contains('chart-actions') || el.classList.contains('no-export') || el.id === 'debugPanel'),
+    onclone: (clonedDoc, clonedEl) => {
+      const style = clonedDoc.createElement('style');
+      style.textContent = `
+        * { animation: none !important; transition: none !important; }
+        .fade-in { opacity: 1 !important; transform: none !important; }
+      `;
+      clonedDoc.head.appendChild(style);
+      clonedEl.style.opacity = '1';
+      clonedEl.style.transform = 'none';
+    },
+  });
+
+  return canvasToTiffBlob(captured);
+}
+
+function triggerTiffDownload(blob, filenameBase) {
+  const url   = URL.createObjectURL(blob);
+  const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${filenameBase}_${stamp}.tiff`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+window.downloadChartAsTiff = async (containerId, filenameBase, btnId) => {
+  const btn = btnId ? document.getElementById(btnId) : null;
+  const originalText = btn ? btn.textContent : null;
+  if (btn) { btn.disabled = true; btn.textContent = '匯出中…'; }
+
+  try {
+    const blob = await captureContainerAsTiff(containerId);
+    triggerTiffDownload(blob, filenameBase);
+    if (btn) {
+      btn.textContent = '✓ 已下載';
+      btn.classList.add('saved');
+      btn.disabled = false;
+      setTimeout(() => { btn.textContent = originalText; btn.classList.remove('saved'); }, 1500);
+    }
+  } catch (e) {
+    console.error('TIFF 匯出失敗:', e);
+    log(`❌ TIFF 匯出失敗: ${e.message}`, 'err');
+    document.getElementById('debugPanel').style.display = 'block';
+    if (btn) { btn.textContent = originalText; btn.disabled = false; }
+  }
+};
+
+window.exportAllAnomalies = async () => {
+  if (S.mode !== 'day') {
+    log('請先切換到「本日」模式才能匯出異常清單', 'err');
+    document.getElementById('debugPanel').style.display = 'block';
+    return;
+  }
+  const idxs = getAnomalyIndices();
+  const btn  = document.getElementById('tiffBtnAllAnomalies');
+  if (!idxs.length) {
+    log('本日沒有異常資料點可匯出', 'err');
+    document.getElementById('debugPanel').style.display = 'block';
+    return;
+  }
+
+  const originalText = btn ? btn.textContent : null;
+  if (btn) btn.disabled = true;
+
+  for (let n = 0; n < idxs.length; n++) {
+    S.idx = idxs[n];
+    selectTime(S.filtered[S.idx].ts.slice(11,16));
+    updateCard();
+    updateTrend();
+    refreshAnomalyState();
+    await new Promise(r => setTimeout(r, 250));
+
+    try {
+      const d = S.filtered[S.idx];
+      const label = `異常_${d.ts.slice(0,10)}_${d.ts.slice(11,16).replace(':','')}_${d.anomaly_type}`;
+      const blob  = await captureContainerAsTiff('anomalyDetailArea');
+      triggerTiffDownload(blob, label);
+    } catch (e) {
+      console.error(e);
+      log(`❌ 第 ${n+1} 筆異常匯出失敗: ${e.message}`, 'err');
+    }
+
+    if (btn) btn.textContent = `匯出中 ${n+1}/${idxs.length}`;
+    await new Promise(r => setTimeout(r, 350));
+  }
+
+  if (btn) { btn.textContent = originalText; btn.disabled = false; }
+  log(`✅ 已匯出本日 ${idxs.length} 筆異常圖`, 'ok');
+};
+
+// ══════════════════════════════════════════
+// ★ Web → 場域控制器（寫入 Firebase，供其他監看端/Unity 讀取）
+// ══════════════════════════════════════════
+function selectDate(date) {
+  set(ref(db, 'viewerDate'), date)
+    .then(() => log(`📡 viewerDate: ${date}`, 'ok'))
+    .catch(e  => log(`❌ viewerDate 寫入失敗: ${e.message}`, 'err'));
+}
+function selectTime(time) {
+  set(ref(db, 'viewerTime'), time)
+    .then(() => log(`📡 viewerTime: ${time}`, 'ok'))
+    .catch(e  => log(`❌ viewerTime 寫入失敗: ${e.message}`, 'err'));
+}
+
+log('🔌 連接 Firebase...');
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+if (ENABLE_APP_CHECK) {
+  initializeAppCheck(app, {
+    provider: new ReCaptchaV3Provider(RECAPTCHA_SITE_KEY),
+    isTokenAutoRefreshEnabled: true
+  });
+}
+
+onValue(ref(db, '/ems_data'), snap => {
+  log('📡 收到數據更新');
+  const raw = snap.val();
+  if (!raw) { log('❌ Firebase 無數據，請先執行 notebook 上傳（upload_to_fb=True 或啟動階段二即時監測）', 'err'); return; }
+
+  S.data = [];
+  let cnt = 0;
+  Object.keys(raw).forEach(dateKey => {
+    const day = raw[dateKey];
+    if (typeof day !== 'object' || !day) return;
+    Object.keys(day).forEach(timeKey => {
+      const r = day[timeKey];
+      if (!r || !r.timestamp) return;
+      cnt++;
+      const dateKeyOnly = r.timestamp.slice(0,10);
+      const source = r.source || (dateKeyOnly <= HISTORICAL_CUTOFF_DATE ? 'historical' : 'live');
+      S.data.push({
+        ts:                  r.timestamp,
+        source:              source,
+        before_load:         +r.before_load         || 0,
+        after_load:          +r.after_load          || 0,
+        over_contract:       +r.over_contract       || 0,
+        contract_capacity:   +r.contract_capacity   || 500,
+        ess_power:           +r.ess_power           || 0,
+        soc:                 +r.soc                 || 0,
+        soh:                 +r.soh                 || 100,
+        self_discharge_rate: +r.self_discharge_rate || 0,
+        cell_v_diff:         +r.cell_v_diff          || 0,
+        is_anomaly:          +r.is_anomaly           || 0,
+        anomaly_type:        r.anomaly_type          || 'normal',
+      });
+    });
+  });
+
+  S.data.sort((a,b) => new Date(a.ts) - new Date(b.ts));
+  log(`✅ 解析完成：${cnt} 筆，${Object.keys(raw).length} 天`, 'ok');
+  document.getElementById('lastUpdate').textContent =
+    `✅ 更新時間: ${new Date().toLocaleString('zh-TW')} | 數據筆數: ${cnt}`;
+  setTimeout(() => document.getElementById('debugPanel').style.display='none', 3000);
+  initView();
+
+}, err => { log(`❌ 連接錯誤: ${err.message}`, 'err'); });
+
+window.setMode = (mode, btn) => {
+  S.mode = mode;
+  btn.parentElement.querySelectorAll('.btn-granularity').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  initView();
+};
+
+window.setSource = (source, btn) => {
+  S.sourceFilter = source;
+  btn.parentElement.querySelectorAll('.btn-granularity').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  initView();
+};
+
+function dataInSourceScope() {
+  return S.sourceFilter === 'all' ? S.data : S.data.filter(d => d.source === S.sourceFilter);
+}
+
+function updateSourceBadge() {
+  const el = document.getElementById('sourceBadge');
+  if (!el || !S.filtered.length) { if(el) el.textContent=''; return; }
+  const sources = new Set(S.filtered.map(d=>d.source));
+  el.className = 'source-badge';
+  if (sources.size > 1) {
+    el.classList.add('mixed');
+    el.textContent = '⚠ 此範圍混雜歷史與即時資料';
+  } else {
+    const s = [...sources][0];
+    if (s === 'historical') { el.classList.add('historical'); el.textContent = '📁 歷史訓練資料（模擬標記，非模型即時判斷）'; }
+    else if (s === 'live')  { el.classList.add('live');       el.textContent = '🔴 即時監測資料（模型即時判斷）'; }
+    else                    { el.classList.add('unknown');    el.textContent = ''; }
+  }
+}
+
+function initView() {
+  const sel   = document.getElementById('dateSelect');
+  const scoped = dataInSourceScope();
+  const dates = [...new Set(scoped.map(d => {
+    const day = d.ts.slice(0,10);
+    if (S.mode==='month') return day.slice(0,7);
+    if (S.mode==='week')  return weekId(new Date(day));
+    return day;
+  }))].filter(Boolean).sort();
+  if (!dates.length) {
+    sel.innerHTML = '';
+    S.filtered = []; S.agg = [];
+    log(`⚠ 目前篩選「${S.sourceFilter}」沒有任何資料`, 'err');
+    document.getElementById('debugPanel').style.display = 'block';
+    updateStats(); updateUI(); renderCharts(); updateSourceBadge(); refreshAnomalyState();
+    return;
+  }
+  const prev  = sel.value;
+  sel.innerHTML = dates.map(d=>`<option value="${d}">${d}</option>`).join('');
+  sel.value     = dates.includes(prev) ? prev : dates.at(-1);
+
+  sel.onchange = () => {
+    if (S.mode === 'day') selectDate(sel.value);
+    applyFilter();
+  };
+
+  document.getElementById('dateLabel').textContent =
+    S.mode==='day' ? '日期' : S.mode==='week' ? '週次' : '月份';
+  applyFilter();
+}
+
+function weekId(d) {
+  const s = new Date(d.getFullYear(), 0, 1);
+  const w = Math.ceil(((d-s)/86400000 + s.getDay()+1)/7);
+  return `${d.getFullYear()}-W${String(w).padStart(2,'0')}`;
+}
+
+function applyFilter() {
+  const v = document.getElementById('dateSelect').value;
+  const scoped = dataInSourceScope();
+  if (S.mode==='day') {
+    S.filtered = scoped.filter(d => d.ts.slice(0,10)===v);
+    S.agg = [];
+    if (S.filtered.length) {
+      selectDate(v);
+      selectTime(S.filtered[0].ts.slice(11,16));
+    }
+  } else {
+    const rows = scoped.filter(d => {
+      const day = d.ts.slice(0,10);
+      return S.mode==='week' ? weekId(new Date(day))===v : day.slice(0,7)===v;
+    });
+    S.filtered = rows;
+    S.agg      = buildAgg(rows);
+  }
+  S.idx = 0;
+  updateStats();
+  updateUI();
+  renderCharts();
+  updateSourceBadge();
+  refreshAnomalyState();
+}
+
+function buildAgg(rows) {
+  const map = {};
+  rows.forEach(r => {
+    const k = r.ts.slice(0,10);
+    if (!map[k]) map[k]={n:0,sBefore:0,mBefore:0,sAfter:0,sSOC:0,sESS:0,sSOH:0,sSelfDis:0};
+    const m=map[k]; m.n++;
+    m.sBefore+=r.before_load; m.mBefore=Math.max(m.mBefore,r.before_load);
+    m.sAfter+=r.after_load; m.sSOC+=r.soc; m.sESS+=r.ess_power;
+    m.sSOH+=r.soh; m.sSelfDis+=r.self_discharge_rate;
+  });
+  return Object.keys(map).sort().map(k => {
+    const m=map[k];
+    return { date:k,
+      avgBefore:(m.sBefore/m.n).toFixed(2), peakBefore:m.mBefore.toFixed(2),
+      avgAfter:(m.sAfter/m.n).toFixed(2),   avgSOC:(m.sSOC/m.n).toFixed(2),
+      avgESS:(m.sESS/m.n).toFixed(2),       avgSOH:(m.sSOH/m.n).toFixed(2),
+      avgSelfDis:(m.sSelfDis/m.n*100).toFixed(3),
+    };
+  });
+}
+
+function avg(arr,fn){ return arr.reduce((s,d)=>s+fn(d),0)/arr.length; }
+
+function updateStats() {
+  const isDay = S.mode==='day';
+  const src   = isDay ? S.filtered : S.agg;
+  if (!src.length) return;
+  const avgOrig = isDay ? avg(src,d=>d.before_load)  : avg(src,d=>+d.avgBefore);
+  const maxOrig = isDay ? Math.max(...src.map(d=>d.before_load)) : Math.max(...src.map(d=>+d.peakBefore));
+  const avgSOC  = isDay ? avg(src,d=>d.soc)          : avg(src,d=>+d.avgSOC);
+  const avgESS  = isDay ? avg(src,d=>d.ess_power)    : avg(src,d=>+d.avgESS);
+  document.getElementById('sAvgOrig').textContent = avgOrig.toFixed(1)+' kW';
+  document.getElementById('sMaxOrig').textContent = maxOrig.toFixed(1)+' kW';
+  document.getElementById('sAvgSOC').textContent  = avgSOC.toFixed(1)+' %';
+  document.getElementById('sAvgESS').textContent  = avgESS.toFixed(1)+' kW';
+}
+
+function updateUI() {
+  const isDay = S.mode==='day';
+  ['navControls','dataCards1','dataCards2','trendIndicator','anomalyToolbar'].forEach(id=>{
+    document.getElementById(id).classList.toggle('hidden',!isDay);
+  });
+  document.getElementById('chart1Title').textContent =
+    isDay ? '用電曲線（調度前後 + 契約容量）' : '每日平均 / 尖峰負載';
+  if (isDay && S.filtered.length) { updateCard(); updateTrend(); }
+}
+
+function updateCard() {
+  const d   = S.filtered[S.idx];
+  const pct = ((S.idx+1)/S.filtered.length*100).toFixed(1);
+  document.getElementById('progressBar').style.width  = pct+'%';
+  document.getElementById('progressText').textContent = `${S.idx+1} / ${S.filtered.length}`;
+
+  document.getElementById('dTime').textContent         = d.ts.replace('T',' ').slice(0,16);
+  document.getElementById('dBeforeLoad').textContent   = d.before_load.toFixed(2);
+  document.getElementById('dAfterLoad').textContent    = d.after_load.toFixed(2);
+  document.getElementById('dContract').textContent     = d.contract_capacity;
+  document.getElementById('dEssPower').textContent     = d.ess_power.toFixed(2);
+  document.getElementById('dOverContract').textContent = d.over_contract.toFixed(2);
+  document.getElementById('dSOC').textContent          = d.soc.toFixed(2);
+  document.getElementById('dSOH').textContent          = d.soh.toFixed(2);
+  document.getElementById('dCellV').textContent        = d.cell_v_diff.toFixed(4);
+  document.getElementById('dSelfDischarge').textContent = (d.self_discharge_rate*100).toFixed(3)+' %';
+
+  const aCard = document.getElementById('dAnomalyCard');
+  const aVal  = document.getElementById('dAnomalyVal');
+  aCard.querySelectorAll('.anomaly-badge,.anomaly-type-badge').forEach(t=>t.remove());
+  document.querySelectorAll('.data-card').forEach(c=>c.classList.remove('anomaly','status-info-card','status-warn-card'));
+
+  if (d.is_anomaly===1) {
+    document.querySelectorAll('.data-card').forEach(c=>c.classList.add('anomaly'));
+    aVal.textContent = '異常';
+    aVal.insertAdjacentHTML('afterend',`<span class="anomaly-type-badge">${d.anomaly_type}</span>`);
+  } else if (STATUS_BADGES[d.anomaly_type]) {
+    // 即時運行時的系統狀態（非真異常）：資料累積中 / 無 SOC 無法推論
+    const b = STATUS_BADGES[d.anomaly_type];
+    aCard.classList.add(b.cls === 'status-info' ? 'status-info-card' : 'status-warn-card');
+    aVal.textContent = '正常';
+    aVal.insertAdjacentHTML('afterend',`<span class="anomaly-type-badge ${b.cls}">${b.text}</span>`);
+  } else {
+    aVal.textContent = '正常';
+  }
+}
+
+function updateTrend() {
+  if (S.idx===0) {
+    document.getElementById('trendValue').textContent = '--';
+    document.getElementById('trendChange').innerHTML  = '<span class="trend-flat">--</span>';
+    return;
+  }
+  const cur  = S.filtered[S.idx].after_load;
+  const prev = S.filtered[S.idx-1].after_load;
+  const diff = cur - prev;
+  const pct  = prev ? ((diff/prev)*100).toFixed(2) : 0;
+  document.getElementById('trendValue').textContent = cur.toFixed(2)+' kW';
+  const cls = diff>0?'trend-up':diff<0?'trend-down':'trend-flat';
+  const sym = diff>0?'↑':diff<0?'↓':'→';
+  document.getElementById('trendChange').innerHTML = `<span class="${cls}">${sym} ${Math.abs(pct)}%</span>`;
+}
+
+document.getElementById('prev').onclick = () => {
+  if (S.idx > 0) {
+    S.idx--;
+    selectTime(S.filtered[S.idx].ts.slice(11,16));
+    updateCard();
+    updateTrend();
+    refreshAnomalyState();
+  }
+};
+
+document.getElementById('next').onclick = () => {
+  if (S.idx < S.filtered.length - 1) {
+    S.idx++;
+    selectTime(S.filtered[S.idx].ts.slice(11,16));
+    updateCard();
+    updateTrend();
+    refreshAnomalyState();
+  }
+};
+
+const COMMON = {
+  responsive:true, maintainAspectRatio:true,
+  animation:{duration:0},
+  interaction:{mode:'index',intersect:false},
+  plugins:{
+    zoom:{pan:{enabled:true,mode:'x'},zoom:{wheel:{enabled:true},mode:'x'}},
+    legend:{display:false},
+    tooltip:{ mode:'index',intersect:false, titleFont:{size:15}, bodyFont:{size:14} }
+  },
+  scales:{
+    x:{ ticks:{ font:{ size:14 } } },
+    y:{ ticks:{ font:{ size:14 } } }
+  },
+  onClick:(e,els) => {
+    if (els.length && S.mode==='day') {
+      S.idx = els[0].index;
+      selectTime(S.filtered[S.idx].ts.slice(11,16));
+      updateCard();
+      updateTrend();
+      refreshAnomalyState();
+    }
+  }
+};
+
+function destroyAll(){
+  ['c1','c2','c3'].forEach(k=>{ if(S.charts[k]){ S.charts[k].destroy(); delete S.charts[k]; } });
+}
+
+function renderCharts(){ destroyAll(); S.mode==='day' ? renderDay() : renderAgg(); }
+
+function renderDay() {
+  const rows   = S.filtered;
+  const labels = rows.map(d=>d.ts.slice(11,16));
+  const ptClr  = rows.map(d=>d.is_anomaly?(ANOMALY_COLORS[d.anomaly_type]||'#e74c3c'):'transparent');
+  const ptRad  = rows.map(d=>d.is_anomaly?5:0);
+
+  S.charts.c1 = new Chart(document.getElementById('chart1'),{
+    type:'line',
+    data:{labels,datasets:[
+      {label:'原始負載',   data:rows.map(d=>d.before_load),       borderColor:'#2ecc71',pointRadius:0,borderWidth:1.8,fill:false},
+      {label:'調節後負載', data:rows.map(d=>d.after_load),        borderColor:'#fbc02d',borderWidth:2.5,fill:false,pointRadius:ptRad,pointBackgroundColor:ptClr,pointBorderColor:ptClr},
+      {label:'契約容量',   data:rows.map(d=>d.contract_capacity), borderColor:'#ff4757',borderDash:[6,4],pointRadius:0,borderWidth:1.5,fill:false},
+    ]},
+    options:{...COMMON,scales:{x:{ticks:{font:{size:14}}},y:{ticks:{font:{size:14}}}}}
+  });
+
+  S.charts.c2 = new Chart(document.getElementById('chart2'),{
+    type:'line',
+    data:{labels,datasets:[
+      {label:'ESS功率',yAxisID:'y', data:rows.map(d=>d.ess_power),borderColor:'#00bcd4',pointRadius:0,borderWidth:1.8,fill:false},
+      {label:'SOC',   yAxisID:'y1',data:rows.map(d=>d.soc),      borderColor:'#ffd93d',pointRadius:0,borderWidth:1.8,fill:false},
+    ]},
+    options:{...COMMON,scales:{
+      x: {ticks:{font:{size:14}}},
+      y: {ticks:{font:{size:14}},title:{display:true,text:'ESS 功率 (kW)',font:{size:15}},grid:{color:ctx=>ctx.tick.value===0?'#5a6c7d55':'#e9ecef'}},
+      y1:{ticks:{font:{size:14}},position:'right',min:0,max:100,title:{display:true,text:'SOC (%)',font:{size:15}}}
+    }}
+  });
+
+  S.charts.c3 = new Chart(document.getElementById('chart3'),{
+    type:'line',
+    data:{labels,datasets:[
+      {label:'SOH',       yAxisID:'y', data:rows.map(d=>d.soh),                          borderColor:'#a29bfe',pointRadius:0,borderWidth:2,fill:false},
+      {label:'自放電率(%)',yAxisID:'y1',data:rows.map(d=>+(d.self_discharge_rate*100).toFixed(3)),borderColor:'#e74c3c',pointRadius:0,borderWidth:1.8,fill:false},
+    ]},
+    options:{...COMMON,scales:{
+      x: {ticks:{font:{size:14}}},
+      y: {ticks:{font:{size:14}},min:0,max:100,title:{display:true,text:'SOH (%)',font:{size:15}}},
+      y1:{ticks:{font:{size:14}},position:'right',min:0,title:{display:true,text:'自放電率 (%)',font:{size:15}}}
+    }}
+  });
+}
+
+function renderAgg() {
+  const labels = S.agg.map(d=>d.date);
+  S.charts.c1 = new Chart(document.getElementById('chart1'),{type:'bar',data:{labels,datasets:[
+    {label:'平均原始負載',data:S.agg.map(d=>d.avgBefore), backgroundColor:'rgba(46,204,113,0.6)',borderColor:'#2ecc71',borderWidth:1},
+    {label:'尖峰原始負載',data:S.agg.map(d=>d.peakBefore),backgroundColor:'rgba(255,71,87,0.5)', borderColor:'#ff4757',borderWidth:1},
+  ]},options:{...COMMON,scales:{x:{ticks:{font:{size:14}}},y:{ticks:{font:{size:14}}}}}});
+
+  S.charts.c2 = new Chart(document.getElementById('chart2'),{type:'bar',data:{labels,datasets:[
+    {label:'平均ESS',yAxisID:'y', data:S.agg.map(d=>d.avgESS),backgroundColor:'rgba(0,188,212,0.6)', borderColor:'#00bcd4',borderWidth:1},
+    {label:'平均SOC',yAxisID:'y1',data:S.agg.map(d=>d.avgSOC),backgroundColor:'rgba(255,217,61,0.6)',borderColor:'#ffd93d',borderWidth:1},
+  ]},options:{...COMMON,scales:{x:{ticks:{font:{size:14}}},y:{ticks:{font:{size:14}}},y1:{ticks:{font:{size:14}},position:'right',min:0,max:100}}}});
+
+  S.charts.c3 = new Chart(document.getElementById('chart3'),{type:'bar',data:{labels,datasets:[
+    {label:'平均SOH',    yAxisID:'y', data:S.agg.map(d=>d.avgSOH),    backgroundColor:'rgba(162,155,254,0.6)',borderColor:'#a29bfe',borderWidth:1},
+    {label:'平均自放電率(%)',yAxisID:'y1',data:S.agg.map(d=>d.avgSelfDis),backgroundColor:'rgba(231,76,60,0.5)',  borderColor:'#e74c3c',borderWidth:1},
+  ]},options:{...COMMON,scales:{x:{ticks:{font:{size:14}}},y:{ticks:{font:{size:14}},min:0,max:100},y1:{ticks:{font:{size:14}},position:'right',min:0}}}});
+}
+
+window.resetZoom = ()=>{ ['c1','c2','c3'].forEach(k=>{ if(S.charts[k]) S.charts[k].resetZoom(); }); };
+</script>
+</body>
+</html>
