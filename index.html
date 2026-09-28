@@ -1,5 +1,6 @@
 
 
+
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -50,6 +51,7 @@ body::after {
 .header-subtitle { font-size: 18px; color: #95a5a6; font-weight: 300; }
 
 .debug-panel {
+  display: none;
   background: #f8f9fa; padding: 15px 20px; border-radius: 12px; margin-bottom: 20px;
   border-left: 3px solid #e74c3c; font-family: monospace; font-size: 16px;
   max-height: 200px; overflow-y: auto;
@@ -445,19 +447,21 @@ import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com
 // databaseURL 已經照你 notebook 裡的 FIREBASE_DATABASE_URL 幫你填好了，
 // 其餘 apiKey / appId / messagingSenderId / storageBucket 需要你自己補上。
 // ══════════════════════════════════════════════════════════════════
+const DEBUG = new URLSearchParams(location.search).get('debug') === '1'; // 網址加 ?debug=1 可顯示除錯面板
+const ENABLE_VIEWER_SYNC = true; // true：訪客選日期/時間會寫入 viewerDate/viewerTime（供 Unity/場域端讀取）；設 false 則網頁完全唯讀
 const ENABLE_APP_CHECK = false; // 如果 essssimulation3 這個專案有另外設定 App Check，改成 true 並填 RECAPTCHA_SITE_KEY
 const RECAPTCHA_SITE_KEY = "PUT_YOUR_RECAPTCHA_V3_SITE_KEY_HERE";
 
 const firebaseConfig = {
-  apiKey: "PUT_YOUR_API_KEY_HERE",
+  apiKey: "AIzaSyBxov7DgTFlV1PVxa9_pNnPvJX6TqM77vc",
   authDomain: "essssimulation3.firebaseapp.com",
   databaseURL: "https://essssimulation3-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "essssimulation3",
   storageBucket: "essssimulation3.firebasestorage.app",
-  messagingSenderId: "PUT_YOUR_SENDER_ID_HERE",
-  appId: "PUT_YOUR_APP_ID_HERE",
+  messagingSenderId: "538028923547",
+  appId: "1:538028923547:web:4d186af116feaa9f90843e",
+  measurementId: "G-YMLZ3D4D6L"
 };
-
 const S = { data:[], filtered:[], agg:[], idx:0, mode:'day', sourceFilter:'all', charts:{} };
 
 // ★ 歷史 CSV 匯入的資料涵蓋到這一天（含）；沒有 source 欄位的舊資料用這個日期回退判斷
@@ -746,16 +750,23 @@ window.exportAllAnomalies = async () => {
 // ★ Web → 場域控制器（寫入 Firebase，供其他監看端/Unity 讀取）
 // ══════════════════════════════════════════
 function selectDate(date) {
+  if (!ENABLE_VIEWER_SYNC) return;
   set(ref(db, 'viewerDate'), date)
     .then(() => log(`📡 viewerDate: ${date}`, 'ok'))
     .catch(e  => log(`❌ viewerDate 寫入失敗: ${e.message}`, 'err'));
 }
 function selectTime(time) {
+  if (!ENABLE_VIEWER_SYNC) return;
   set(ref(db, 'viewerTime'), time)
     .then(() => log(`📡 viewerTime: ${time}`, 'ok'))
     .catch(e  => log(`❌ viewerTime 寫入失敗: ${e.message}`, 'err'));
 }
 
+if (DEBUG) document.getElementById('debugPanel').style.display = 'block';
+if (/PUT_YOUR/.test(JSON.stringify(firebaseConfig))) {
+  log('❌ firebaseConfig 尚未填寫完整（apiKey / messagingSenderId / appId）', 'err');
+  document.getElementById('debugPanel').style.display = 'block';
+}
 log('🔌 連接 Firebase...');
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
@@ -805,7 +816,7 @@ onValue(ref(db, '/ems_data'), snap => {
   log(`✅ 解析完成：${cnt} 筆，${Object.keys(raw).length} 天`, 'ok');
   document.getElementById('lastUpdate').textContent =
     `✅ 更新時間: ${new Date().toLocaleString('zh-TW')} | 數據筆數: ${cnt}`;
-  setTimeout(() => document.getElementById('debugPanel').style.display='none', 3000);
+  if (!DEBUG) setTimeout(() => document.getElementById('debugPanel').style.display='none', 3000);
   initView();
 
 }, err => { log(`❌ 連接錯誤: ${err.message}`, 'err'); });
