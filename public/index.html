@@ -237,6 +237,63 @@ select:focus { outline: none; border-color: #7a8ba0; box-shadow: 0 0 0 3px rgba(
   .trend-indicator { position: relative; bottom: auto; right: auto; margin-bottom: 20px; }
   .chart-actions { margin-left: 0; }
 }
+/* ═══════════ 手機版 / 觸控優化 ═══════════ */
+html { -webkit-text-size-adjust: 100%; }
+canvas { max-width: 100%; touch-action: pan-y; }   /* 垂直滑動捲頁面，水平滑動平移圖表，雙指縮放 */
+.container, .container > * { min-width: 0; }
+@media(max-width:768px) {
+  body { font-size: 16px; padding: 14px 10px 24px; }
+  .header { padding: 16px 18px; gap: 12px; border-radius: 16px; }
+  .header h2 { font-size: 24px; margin-bottom: 4px; }
+  .header-subtitle { font-size: 14px; }
+  .btn-tiff-full { width: 100%; justify-content: center; }
+
+  .time-granularity, .timeline-nav, .anomaly-toolbar { padding: 14px 16px; border-radius: 16px; gap: 10px; }
+  .granularity-label { font-size: 16px; }
+  .granularity-buttons { flex-wrap: wrap; width: 100%; gap: 8px; }
+  .btn-granularity { flex: 1 1 auto; padding: 10px 12px; font-size: 15px; min-height: 44px; }
+  .source-badge { margin-left: 0; white-space: normal; font-size: 13px; }
+
+  .date-group { width: 100%; padding: 8px 12px; }
+  .date-group select { flex: 1; min-width: 0; }
+  .nav-controls { flex-wrap: wrap; width: 100%; }
+  .nav-controls button { flex: 1 1 40%; }
+  .progress-indicator { flex: 1 1 100%; min-width: 0; order: 3; }
+  button { font-size: 15px; padding: 10px 14px; min-height: 44px; }
+  select { font-size: 16px; }
+
+  .anomaly-nav { width: 100%; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .anomaly-nav button { flex: 1 1 40%; }
+  .anomaly-counter { order: -1; flex: 1 1 100%; min-width: 0; }
+  .anomaly-export { width: 100%; }
+  .anomaly-export .btn-tiff { flex: 1 1 100%; justify-content: center; }
+
+  .stats-grid { gap: 10px; }
+  .stat-card { padding: 14px; border-radius: 14px; }
+  .stat-label { font-size: 14px; margin-bottom: 6px; }
+  .stat-value { font-size: 22px; }
+  .data-cards { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .data-card { padding: 12px 14px; min-height: 76px; }
+  .data-label { font-size: 13px; }
+  .data-value { font-size: 18px; }
+
+  .chart-container { padding: 14px; border-radius: 16px; }
+  .chart-header { flex-direction: column; align-items: stretch; margin-bottom: 14px; }
+  .chart-title { font-size: 18px; }
+  .chart-subtitle { font-size: 13px; }
+  .legend-row { gap: 10px; }
+  .legend-item { font-size: 13px; }
+  .chart-actions { flex-wrap: wrap; }
+
+  .trend-indicator { padding: 14px 16px; min-width: 0; }
+  .trend-value { font-size: 24px; }
+  .debug-panel { font-size: 13px; }
+}
+@media(max-width:400px) {
+  .stat-value { font-size: 19px; }
+  .data-value { font-size: 16px; }
+  .btn-granularity { padding: 10px 8px; font-size: 14px; }
+}
 </style>
 </head>
 <body>
@@ -462,6 +519,7 @@ const firebaseConfig = {
   appId: "1:538028923547:web:4d186af116feaa9f90843e",
   measurementId: "G-YMLZ3D4D6L"
 };
+
 const S = { data:[], filtered:[], agg:[], idx:0, mode:'day', sourceFilter:'all', charts:{} };
 
 // ★ 歷史 CSV 匯入的資料涵蓋到這一天（含）；沒有 source 欄位的舊資料用這個日期回退判斷
@@ -1038,18 +1096,22 @@ document.getElementById('next').onclick = () => {
   }
 };
 
+// ★ 手機版：圖表改成較高的長寬比、刻度字縮小、支援雙指縮放
+const MQ_MOBILE = window.matchMedia('(max-width: 768px)');
+let TK = MQ_MOBILE.matches ? 11 : 14;
 const COMMON = {
   responsive:true, maintainAspectRatio:true,
+  ...(MQ_MOBILE.matches ? { aspectRatio: 1.4 } : {}),
   animation:{duration:0},
   interaction:{mode:'index',intersect:false},
   plugins:{
-    zoom:{pan:{enabled:true,mode:'x'},zoom:{wheel:{enabled:true},mode:'x'}},
+    zoom:{pan:{enabled:true,mode:'x'},zoom:{wheel:{enabled:true},pinch:{enabled:true},mode:'x'}},
     legend:{display:false},
     tooltip:{ mode:'index',intersect:false, titleFont:{size:15}, bodyFont:{size:14} }
   },
   scales:{
-    x:{ ticks:{ font:{ size:14 } } },
-    y:{ ticks:{ font:{ size:14 } } }
+    x:{ ticks:{ font:{ size:TK } } },
+    y:{ ticks:{ font:{ size:TK } } }
   },
   onClick:(e,els) => {
     if (els.length && S.mode==='day') {
@@ -1061,6 +1123,12 @@ const COMMON = {
     }
   }
 };
+
+MQ_MOBILE.addEventListener('change', e => {   // 旋轉手機或縮放視窗跨過斷點時重畫圖表
+  TK = e.matches ? 11 : 14;
+  if (e.matches) COMMON.aspectRatio = 1.4; else delete COMMON.aspectRatio;
+  if (S.filtered && S.filtered.length) renderCharts();
+});
 
 function destroyAll(){
   ['c1','c2','c3'].forEach(k=>{ if(S.charts[k]){ S.charts[k].destroy(); delete S.charts[k]; } });
@@ -1081,7 +1149,7 @@ function renderDay() {
       {label:'調節後負載', data:rows.map(d=>d.after_load),        borderColor:'#fbc02d',borderWidth:2.5,fill:false,pointRadius:ptRad,pointBackgroundColor:ptClr,pointBorderColor:ptClr},
       {label:'契約容量',   data:rows.map(d=>d.contract_capacity), borderColor:'#ff4757',borderDash:[6,4],pointRadius:0,borderWidth:1.5,fill:false},
     ]},
-    options:{...COMMON,scales:{x:{ticks:{font:{size:14}}},y:{ticks:{font:{size:14}}}}}
+    options:{...COMMON,scales:{x:{ticks:{font:{size:TK}}},y:{ticks:{font:{size:TK}}}}}
   });
 
   S.charts.c2 = new Chart(document.getElementById('chart2'),{
@@ -1091,9 +1159,9 @@ function renderDay() {
       {label:'SOC',   yAxisID:'y1',data:rows.map(d=>d.soc),      borderColor:'#ffd93d',pointRadius:0,borderWidth:1.8,fill:false},
     ]},
     options:{...COMMON,scales:{
-      x: {ticks:{font:{size:14}}},
-      y: {ticks:{font:{size:14}},title:{display:true,text:'ESS 功率 (kW)',font:{size:15}},grid:{color:ctx=>ctx.tick.value===0?'#5a6c7d55':'#e9ecef'}},
-      y1:{ticks:{font:{size:14}},position:'right',min:0,max:100,title:{display:true,text:'SOC (%)',font:{size:15}}}
+      x: {ticks:{font:{size:TK}}},
+      y: {ticks:{font:{size:TK}},title:{display:true,text:'ESS 功率 (kW)',font:{size:TK+1}},grid:{color:ctx=>ctx.tick.value===0?'#5a6c7d55':'#e9ecef'}},
+      y1:{ticks:{font:{size:TK}},position:'right',min:0,max:100,title:{display:true,text:'SOC (%)',font:{size:TK+1}}}
     }}
   });
 
@@ -1104,9 +1172,9 @@ function renderDay() {
       {label:'自放電率(%)',yAxisID:'y1',data:rows.map(d=>+(d.self_discharge_rate*100).toFixed(3)),borderColor:'#e74c3c',pointRadius:0,borderWidth:1.8,fill:false},
     ]},
     options:{...COMMON,scales:{
-      x: {ticks:{font:{size:14}}},
-      y: {ticks:{font:{size:14}},min:0,max:100,title:{display:true,text:'SOH (%)',font:{size:15}}},
-      y1:{ticks:{font:{size:14}},position:'right',min:0,title:{display:true,text:'自放電率 (%)',font:{size:15}}}
+      x: {ticks:{font:{size:TK}}},
+      y: {ticks:{font:{size:TK}},min:0,max:100,title:{display:true,text:'SOH (%)',font:{size:TK+1}}},
+      y1:{ticks:{font:{size:TK}},position:'right',min:0,title:{display:true,text:'自放電率 (%)',font:{size:TK+1}}}
     }}
   });
 }
@@ -1116,17 +1184,17 @@ function renderAgg() {
   S.charts.c1 = new Chart(document.getElementById('chart1'),{type:'bar',data:{labels,datasets:[
     {label:'平均原始負載',data:S.agg.map(d=>d.avgBefore), backgroundColor:'rgba(46,204,113,0.6)',borderColor:'#2ecc71',borderWidth:1},
     {label:'尖峰原始負載',data:S.agg.map(d=>d.peakBefore),backgroundColor:'rgba(255,71,87,0.5)', borderColor:'#ff4757',borderWidth:1},
-  ]},options:{...COMMON,scales:{x:{ticks:{font:{size:14}}},y:{ticks:{font:{size:14}}}}}});
+  ]},options:{...COMMON,scales:{x:{ticks:{font:{size:TK}}},y:{ticks:{font:{size:TK}}}}}});
 
   S.charts.c2 = new Chart(document.getElementById('chart2'),{type:'bar',data:{labels,datasets:[
     {label:'平均ESS',yAxisID:'y', data:S.agg.map(d=>d.avgESS),backgroundColor:'rgba(0,188,212,0.6)', borderColor:'#00bcd4',borderWidth:1},
     {label:'平均SOC',yAxisID:'y1',data:S.agg.map(d=>d.avgSOC),backgroundColor:'rgba(255,217,61,0.6)',borderColor:'#ffd93d',borderWidth:1},
-  ]},options:{...COMMON,scales:{x:{ticks:{font:{size:14}}},y:{ticks:{font:{size:14}}},y1:{ticks:{font:{size:14}},position:'right',min:0,max:100}}}});
+  ]},options:{...COMMON,scales:{x:{ticks:{font:{size:TK}}},y:{ticks:{font:{size:TK}}},y1:{ticks:{font:{size:TK}},position:'right',min:0,max:100}}}});
 
   S.charts.c3 = new Chart(document.getElementById('chart3'),{type:'bar',data:{labels,datasets:[
     {label:'平均SOH',    yAxisID:'y', data:S.agg.map(d=>d.avgSOH),    backgroundColor:'rgba(162,155,254,0.6)',borderColor:'#a29bfe',borderWidth:1},
     {label:'平均自放電率(%)',yAxisID:'y1',data:S.agg.map(d=>d.avgSelfDis),backgroundColor:'rgba(231,76,60,0.5)',  borderColor:'#e74c3c',borderWidth:1},
-  ]},options:{...COMMON,scales:{x:{ticks:{font:{size:14}}},y:{ticks:{font:{size:14}},min:0,max:100},y1:{ticks:{font:{size:14}},position:'right',min:0}}}});
+  ]},options:{...COMMON,scales:{x:{ticks:{font:{size:TK}}},y:{ticks:{font:{size:TK}},min:0,max:100},y1:{ticks:{font:{size:TK}},position:'right',min:0}}}});
 }
 
 window.resetZoom = ()=>{ ['c1','c2','c3'].forEach(k=>{ if(S.charts[k]) S.charts[k].resetZoom(); }); };
