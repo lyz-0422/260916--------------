@@ -1,6 +1,4 @@
 
-
-
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -220,6 +218,28 @@ select:focus { outline: none; border-color: #7a8ba0; box-shadow: 0 0 0 3px rgba(
 .trend-flat { color: #95a5a6; }
 
 .hidden { display: none !important; }
+
+/* ★ HTML 版圖表提示框（取代 canvas 內建提示框，讓 Google 自動翻譯可以處理） */
+#chartTip {
+  position: fixed; pointer-events: none; z-index: 2000; opacity: 0;
+  background: rgba(0,0,0,.82); color: #fff; border-radius: 8px;
+  padding: 8px 12px; font-size: 14px; line-height: 1.6; white-space: nowrap;
+}
+
+/* ★ HTML 版軸標題（放在 canvas 左右兩側，Google 自動翻譯可以處理，TIFF 匯出也會一併截進去） */
+.chart-wrap { position: relative; padding: 0 34px; }
+.axis-title {
+  position: absolute; top: 46%; white-space: nowrap; pointer-events: none;
+  font-size: 14px; color: #5a6c7d; font-weight: 500;
+}
+.axis-left  { left: 12px;  transform: translate(-50%, -50%) rotate(-90deg); }
+.axis-right { right: 12px; transform: translate(50%, -50%) rotate(90deg); }
+@media(max-width:768px) {
+  .chart-wrap { padding: 0 24px; }
+  .axis-title { font-size: 12px; }
+  .axis-left  { left: 8px; }
+  .axis-right { right: 8px; }
+}
 
 @keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
 .fade-in { animation: fadeIn 0.5s ease; }
@@ -459,7 +479,11 @@ canvas { max-width: 100%; touch-action: pan-y; }   /* 垂直滑動捲頁面，�
         <button class="btn-tiff" id="tiffBtn2" onclick="downloadChartAsTiff('chartCard2','ESS功率_SOC', 'tiffBtn2')">⬇ 下載 TIFF</button>
       </div>
     </div>
-    <canvas id="chart2" height="100"></canvas>
+    <div class="chart-wrap">
+      <div class="axis-title axis-left">ESS 功率 (kW)</div>
+      <canvas id="chart2" height="100"></canvas>
+      <div class="axis-title axis-right">SOC (%)</div>
+    </div>
   </div>
 
   <div class="chart-container fade-in" id="chartCard3">
@@ -476,7 +500,11 @@ canvas { max-width: 100%; touch-action: pan-y; }   /* 垂直滑動捲頁面，�
         <button class="btn-tiff" id="tiffBtn3" onclick="downloadChartAsTiff('chartCard3','SOH_自放電率', 'tiffBtn3')">⬇ 下載 TIFF</button>
       </div>
     </div>
-    <canvas id="chart3" height="100"></canvas>
+    <div class="chart-wrap">
+      <div class="axis-title axis-left">SOH (%)</div>
+      <canvas id="chart3" height="100"></canvas>
+      <div class="axis-title axis-right">自放電率 (%)</div>
+    </div>
   </div>
 
   </div>
@@ -488,6 +516,9 @@ canvas { max-width: 100%; touch-action: pan-y; }   /* 垂直滑動捲頁面，�
   </div>
 
 </div>
+
+<!-- ★ HTML 版提示框：Google 自動翻譯可以處理 -->
+<div id="chartTip" class="no-export"></div>
 
 <script type="module">
 import { initializeApp }      from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js";
@@ -1096,6 +1127,27 @@ document.getElementById('next').onclick = () => {
   }
 };
 
+// ★ HTML 版提示框（external tooltip）：提示框內容是 DOM 文字，Google 自動翻譯可以翻譯
+function htmlTooltip(context) {
+  const { chart, tooltip } = context;
+  const el = document.getElementById('chartTip');
+  if (tooltip.opacity === 0) { el.style.opacity = 0; return; }
+
+  const title = (tooltip.title || []).join('');
+  const rows = (tooltip.dataPoints || []).map((p, i) => {
+    const c = tooltip.labelColors[i].borderColor;
+    return `<div><span style="display:inline-block;width:10px;height:10px;background:${c};margin-right:6px;border-radius:2px"></span>${p.dataset.label}: ${p.formattedValue}</div>`;
+  }).join('');
+  el.innerHTML = `<div style="font-weight:600;margin-bottom:2px">${title}</div>${rows}`;
+
+  const r = chart.canvas.getBoundingClientRect();
+  let x = r.left + tooltip.caretX + 14;
+  if (x + el.offsetWidth > window.innerWidth - 8) x = r.left + tooltip.caretX - el.offsetWidth - 14;
+  el.style.left = x + 'px';
+  el.style.top  = (r.top + tooltip.caretY) + 'px';
+  el.style.opacity = 1;
+}
+
 // ★ 手機版：圖表改成較高的長寬比、刻度字縮小、支援雙指縮放
 const MQ_MOBILE = window.matchMedia('(max-width: 768px)');
 let TK = MQ_MOBILE.matches ? 11 : 14;
@@ -1107,7 +1159,7 @@ const COMMON = {
   plugins:{
     zoom:{pan:{enabled:true,mode:'x'},zoom:{wheel:{enabled:true},pinch:{enabled:true},mode:'x'}},
     legend:{display:false},
-    tooltip:{ mode:'index',intersect:false, titleFont:{size:15}, bodyFont:{size:14} }
+    tooltip:{ enabled:false, external:htmlTooltip, mode:'index', intersect:false }
   },
   scales:{
     x:{ ticks:{ font:{ size:TK } } },
@@ -1132,6 +1184,8 @@ MQ_MOBILE.addEventListener('change', e => {   // 旋轉手機或縮放視窗跨�
 
 function destroyAll(){
   ['c1','c2','c3'].forEach(k=>{ if(S.charts[k]){ S.charts[k].destroy(); delete S.charts[k]; } });
+  const tip = document.getElementById('chartTip');
+  if (tip) tip.style.opacity = 0;
 }
 
 function renderCharts(){ destroyAll(); S.mode==='day' ? renderDay() : renderAgg(); }
@@ -1152,6 +1206,7 @@ function renderDay() {
     options:{...COMMON,scales:{x:{ticks:{font:{size:TK}}},y:{ticks:{font:{size:TK}}}}}
   });
 
+  // ★ 軸標題改由 HTML 元素（.axis-title）顯示，不在 canvas 內繪製，Google 翻譯才讀得到
   S.charts.c2 = new Chart(document.getElementById('chart2'),{
     type:'line',
     data:{labels,datasets:[
@@ -1160,8 +1215,8 @@ function renderDay() {
     ]},
     options:{...COMMON,scales:{
       x: {ticks:{font:{size:TK}}},
-      y: {ticks:{font:{size:TK}},title:{display:true,text:'ESS 功率 (kW)',font:{size:TK+1}},grid:{color:ctx=>ctx.tick.value===0?'#5a6c7d55':'#e9ecef'}},
-      y1:{ticks:{font:{size:TK}},position:'right',min:0,max:100,title:{display:true,text:'SOC (%)',font:{size:TK+1}}}
+      y: {ticks:{font:{size:TK}},grid:{color:ctx=>ctx.tick.value===0?'#5a6c7d55':'#e9ecef'}},
+      y1:{ticks:{font:{size:TK}},position:'right',min:0,max:100}
     }}
   });
 
@@ -1173,8 +1228,8 @@ function renderDay() {
     ]},
     options:{...COMMON,scales:{
       x: {ticks:{font:{size:TK}}},
-      y: {ticks:{font:{size:TK}},min:0,max:100,title:{display:true,text:'SOH (%)',font:{size:TK+1}}},
-      y1:{ticks:{font:{size:TK}},position:'right',min:0,title:{display:true,text:'自放電率 (%)',font:{size:TK+1}}}
+      y: {ticks:{font:{size:TK}},min:0,max:100},
+      y1:{ticks:{font:{size:TK}},position:'right',min:0}
     }}
   });
 }
