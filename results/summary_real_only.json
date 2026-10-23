@@ -1,0 +1,53 @@
+{
+  "feature_mode": "real_only",
+  "n_samples": 25783,
+  "n_train": 18048,
+  "n_test": 7735,
+  "n_test_anomalies": 615,
+  "optimal_k": 10,
+  "supervised_name": "RandomForest",
+  "hybrid_weight": 0.35000000000000003,
+  "threshold": 0.54,
+  "val_metrics": {
+    "precision": 0.6475409836065574,
+    "recall": 0.3015267175572519,
+    "f1": 0.4114583333333333,
+    "accuracy": 0.9373787752840121
+  },
+  "test_metrics": {
+    "precision": 0.8590909090909091,
+    "recall": 0.3073170731707317,
+    "f1": 0.45269461077844314,
+    "accuracy": 0.940917905623788
+  },
+  "auc": {
+    "roc_auc": 0.6688251347401115,
+    "pr_auc": 0.4116211165998725
+  },
+  "multiclass": {
+    "model": "XGBoost",
+    "accuracy": 0.8527472527472527,
+    "f1_macro": 0.488762190975457
+  },
+  "best_params": {
+    "IF": {
+      "n_estimators": 100,
+      "max_samples": 512,
+      "contamination": 0.12,
+      "max_features": 0.3
+    },
+    "RF": {
+      "n_estimators": 100,
+      "max_depth": 10,
+      "min_samples_split": 5,
+      "min_samples_leaf": 4
+    },
+    "XGB": {
+      "n_estimators": 150,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "min_child_weight": 10
+    },
+    "hybrid_weight": 0.35000000000000003
+  }
+}

@@ -1,0 +1,6 @@
+seed,jaccard_vs_stored,n_diff,dropped_vs_stored,added_vs_stored,top5
+0,0.7647058823529411,4,"contract_capacity, day_of_week, hour_cos, power_diff","is_night, hour_sin, soh_diff, power_mean_4",cell_v_high_flag / cell_v_diff / self_discharge_rate / self_dis_high / cell_v_diff_ma
+1,0.7647058823529411,4,"is_daytime, hour_cos, power_diff, contract_violation","hour, load_diff, soc_mean_12, soc_extreme",cell_v_high_flag / cell_v_diff / self_discharge_rate / self_dis_high / soc_diff
+2,0.6216216216216216,7,"contract_capacity, soh, day_of_week, is_daytime, hour_cos, power_diff, contract_violation","over_contract, hour, is_night, soh_diff, power_mean_4, power_mean_8, soc_mean_12",self_discharge_rate / self_dis_high / cell_v_high_flag / cell_v_diff / soc_change_rate
+3,0.6216216216216216,7,"soh, day_of_week, is_daytime, hour_cos, power_diff, soc_std_8, contract_violation","is_weekend, day_sin, day_cos, soh_diff, power_extreme, soc_lag_1, soc_lag_4",self_dis_high / cell_v_high_flag / self_discharge_rate / cell_v_diff / cell_v_diff_ma
+42,0.6666666666666666,6,"contract_capacity, day_of_week, hour_cos, cell_v_diff_max, power_diff, contract_violation","ess_power, is_peak_hour, soh_diff, power_mean_8, power_extreme, power_lag_2",self_discharge_rate / self_dis_high / cell_v_high_flag / cell_v_diff / soc

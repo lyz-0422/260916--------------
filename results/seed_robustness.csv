@@ -1,0 +1,7 @@
+mi_seed,jaccard_vs_main,n_diff_vs_main,supervised,w_IF,tau_val,test_f1,test_precision,test_recall,test_far,test_roc_auc,top5
+0,0.627906976744186,8,XGBoost,0.0,0.49,0.9827160493827161,0.995,0.9707317073170731,0.0004213483146067416,0.9992358637069516,self_dis_high / self_discharge_rate / cell_v_diff / cell_v_high_flag / cell_v_diff_ma
+1,0.6666666666666666,7,RandomForest,0.0,0.51,0.975973487986744,0.9949324324324325,0.9577235772357724,0.0004213483146067416,0.9976482141225905,cell_v_high_flag / cell_v_diff / self_dis_high / self_discharge_rate / cell_v_diff_ma
+2,0.5909090909090909,9,XGBoost,0.0,0.49,0.9819078947368421,0.9933444259567388,0.9707317073170731,0.0005617977528089888,0.9993203617429434,self_discharge_rate / cell_v_high_flag / self_dis_high / cell_v_diff / soc_change_rate
+3,0.627906976744186,8,XGBoost,0.5,0.44,0.9795584627964022,0.9851973684210527,0.9739837398373984,0.0012640449438202246,0.9977123869553303,self_dis_high / self_discharge_rate / cell_v_high_flag / cell_v_diff / cell_v_diff_ma
+4,0.6666666666666666,7,XGBoost,0.0,0.39,0.9835526315789473,0.9950083194675541,0.9723577235772358,0.0004213483146067416,0.9996286653877775,self_dis_high / self_discharge_rate / cell_v_high_flag / cell_v_diff / soc_change_rate
+42,1.0,0,XGBoost,0.0,0.46,0.9827160493827161,0.995,0.9707317073170731,0.0004213483146067416,0.9992671508175757,self_discharge_rate / self_dis_high / cell_v_high_flag / cell_v_diff / cell_v_diff_ma

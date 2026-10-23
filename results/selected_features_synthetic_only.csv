@@ -1,0 +1,6 @@
+feature,mutual_info,origin
+self_discharge_rate,0.07620798007835172,simulated
+cell_v_diff,0.07267578085169224,simulated
+self_dis_high,0.07214305113115227,simulated
+cell_v_high_flag,0.06973229764769484,simulated
+cell_v_diff_ma,0.02684019861578557,simulated

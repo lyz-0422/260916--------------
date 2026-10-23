@@ -1,0 +1,11 @@
+feature,mutual_info,origin
+soc_diff,0.027544181401539358,field
+soc_change_rate,0.02589767777499352,field
+soc,0.024911468871823716,field
+dv_dq_proxy,0.024013231607481478,field
+soc_diff2,0.01948589233884479,field
+soc_power_interaction,0.01775952680040449,field
+soc_range_4,0.0063355649220393495,field
+day_sin,0.006029011084066838,field
+soc_std_4,0.00559727366279561,field
+soc_mean_4,0.005410958570418289,field
