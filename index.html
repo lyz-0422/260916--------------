@@ -386,6 +386,8 @@ canvas { max-width: 100%; touch-action: pan-y; }
       <div>
         <h2>EV 充電樁監控儀表板</h2>
         <div class="header-subtitle" id="evLastUpdate">正在連接 Firebase...</div>
+        <div class="header-subtitle" id="evOnline" style="margin-top:6px"></div>
+        <div class="header-subtitle" style="font-size:14px;margin-top:4px">資料僅在做實驗時約每 10 分鐘更新一次；沒做實驗時不會更新</div>
       </div>
       <button class="btn-tiff btn-tiff-full no-export" id="tiffBtnEvFull" onclick="downloadChartAsTiff('evExportArea','EV_儀表板_整頁','tiffBtnEvFull')">📸 下載整頁 TIFF</button>
     </div>
@@ -809,19 +811,26 @@ onValue(ref(db, '/EV_charger_data'), snap => {
     return;
   }
   E.data = [];
+  // latest = 最新數據（Unity 讀這個）；charger_日期_時間 = 歷史紀錄。
+  // 若 latest 的 event_time 已存在於歷史紀錄就不重複計入，否則補進來當一筆。
+  const toRec = (k, r) => ({
+    id: k, ts: r.event_time, ingest: r.ingest_time,
+    data: r.data || {}, settings: r.charger_settings || {},
+    fd: r.field_desc || {}, sd: r.settings_desc || {},
+  });
+  let latestRec = null;
   Object.keys(raw).forEach(k => {
     const r = raw[k];
     if (!r || typeof r !== 'object' || !r.event_time) return;
-    E.data.push({
-      id: k, ts: r.event_time, ingest: r.ingest_time, source: r.source || '', device: r.device_id || '',
-      data: r.data || {}, settings: r.charger_settings || {},
-      fd: r.field_desc || {}, sd: r.settings_desc || {},
-    });
+    if (k === 'latest') { latestRec = toRec(k, r); return; }
+    E.data.push(toRec(k, r));
   });
+  if (latestRec && !E.data.some(x => x.ts === latestRec.ts)) E.data.push(latestRec);
   E.data.sort((a,b) => Date.parse(a.ts) - Date.parse(b.ts));
   const set_ = new Set();
   E.data.forEach(r => { Object.keys(r.data).forEach(c => set_.add(c)); Object.keys(r.settings).forEach(c => set_.add(c)); });
   E.chargers = [...set_].sort();
+  updateEVOnline();
   log(`✅ EV 解析完成：${E.data.length} 筆，${E.chargers.length} 個充電樁`, 'ok');
   document.getElementById('evLastUpdate').textContent =
     `✅ 更新時間: ${new Date().toLocaleString('zh-TW')} | 數據筆數: ${E.data.length}`;
@@ -1140,15 +1149,27 @@ function renderAgg() {
 // ★★★ EV 充電樁：資料處理 + 畫面 + 圖表 ★★★
 // ══════════════════════════════════════════════════════════════
 const EV_COLORS = ['#00bcd4', '#e67e22', '#8e44ad', '#27ae60', '#e84393', '#2d3436'];
+const CHARGER_NAMES = { charger_1:'動力輪組櫃', charger_2:'電子負載櫃', charger_3:'雙向直流負載櫃' };
+function updateEVOnline() {
+  const el = document.getElementById('evOnline');
+  const last = E.data.at(-1);
+  if (!el) return;
+  if (!last) { el.textContent = ''; return; }
+  const when = last.ts.replace('T',' ').slice(0,19);
+  const mins = (Date.now() - Date.parse(last.ts)) / 60000;
+  // 每 10 分鐘更新一次，超過 30 分鐘沒新資料視為離線／未在做實驗
+  el.textContent = mins > 30 ? `⚪ 離線／目前未在做實驗（最後資料：${when}）` : `🟢 線上（最後資料：${when}）`;
+}
+setInterval(updateEVOnline, 60000);
 const evColor = k => EV_COLORS[Math.max(0, E.chargers.indexOf(k)) % EV_COLORS.length];
 
 // 要畫的圖：每個指標一張圖，每個充電樁一條線
 const EV_METRICS = [
-  { key:'soc',        title:'電量 SOC（%）',          sub:'各充電樁電池組電量',                         unit:'%',  min:0, max:100 },
+  { key:'soc',        title:'電量 SOC（%）',          sub:'各充電樁電池組電量（%）',                         unit:'%',  min:0, max:100 },
   { key:'current_a',  title:'電池組電流（A）',         sub:'正值＝充電、負值＝放電（0 線為分界）',        unit:'A',  zero:true },
-  { key:'voltage_v',  title:'電池組電壓（V）',         sub:'各充電樁電池組電壓',                         unit:'V' },
+  { key:'voltage_v',  title:'電池組電壓（V）',         sub:'各充電樁電池組電壓（正常約 84–106 V）',                         unit:'V' },
   { key:'max_temp_c', title:'電池組最高溫（°C）',      sub:'各充電樁電池組最高溫度',                     unit:'°C' },
-  { key:'soh',        title:'健康度 SOH（%）',         sub:'各充電樁電池組健康度',                       unit:'%',  min:0, max:100 },
+  { key:'soh',        title:'健康度 SOH（%）',         sub:'各充電樁電池組健康度（100＝全新）',                       unit:'%',  min:0, max:100 },
 ];
 
 const num = v => (v === undefined || v === null || v === '' || isNaN(+v)) ? null : +v;
@@ -1248,13 +1269,13 @@ function renderEVCards() {
     const stCls = st.includes('充') && !st.includes('放') ? 'charging' : st.includes('放') ? 'discharging' : 'idle';
     const outOn = s.output_on === undefined ? '--' : (+s.output_on ? '開' : '關');
     const extra = [];
-    if (s.output_current_set_a !== undefined) extra.push(`<div>輸出電流設定<b>${fmt(num(s.output_current_set_a),1,' A')}</b></div>`);
-    if (s.output_voltage_set_v !== undefined) extra.push(`<div>輸出電壓設定<b>${fmt(num(s.output_voltage_set_v),1,' V')}</b></div>`);
+    if (s.output_current_set_a !== undefined) extra.push(`<div>充電電流設定<b>${fmt(num(s.output_current_set_a),1,' A')}</b></div>`);
+    if (s.output_voltage_set_v !== undefined) extra.push(`<div>充電電壓設定<b>${fmt(num(s.output_voltage_set_v),1,' V')}</b></div>`);
     return `
     <div class="ev-card" style="border-top-color:${evColor(k)}">
       <div class="ev-card-head">
         <div>
-          <div class="ev-card-name">${esc(d.name || k)}</div>
+          <div class="ev-card-name">${esc(d.name || CHARGER_NAMES[k] || k)}</div>
           <div class="ev-card-key">${esc(k)}</div>
         </div>
         <span class="ev-state ${stCls}">${esc(st)}</span>
@@ -1265,10 +1286,10 @@ function renderEVCards() {
         <div>電壓<b>${fmt(num(d.voltage_v),1,' V')}</b></div>
         <div>電流<b>${fmt(num(d.current_a),2,' A')}</b></div>
         <div>最高溫<b>${fmt(num(d.max_temp_c),1,' °C')}</b></div>
-        <div>輸出開關<b>${outOn}</b></div>
-        <div class="wide">電源供應器模式<b>${esc(s.mode || '--')}</b></div>
-        <div>回灌電流設定<b>${fmt(num(s.reverse_current_set_a),1,' A')}</b></div>
-        <div>回灌電壓下限<b>${fmt(num(s.reverse_voltage_set_v),1,' V')}</b></div>
+        <div>充電樁輸出<b>${outOn}</b></div>
+        <div class="wide">充電樁模式（設定）<b>${esc(s.mode || '--')}</b></div>
+        <div title="電源供應器韌體修正前此值不可信（可能出現 650 左右）">回灌電流設定 <span class="sim-badge sim-badge-sm">⚠ 不可信</span><b>${fmt(num(s.reverse_current_set_a),1,' A')}</b></div>
+        <div>回灌電壓下限設定<b>${fmt(num(s.reverse_voltage_set_v),1,' V')}</b></div>
         ${extra.join('')}
       </div>
     </div>`;
@@ -1276,10 +1297,8 @@ function renderEVCards() {
     <div class="ev-card" style="border-top-color:#95a5a6">
       <div class="ev-card-head"><div class="ev-card-name">紀錄資訊</div></div>
       <div class="ev-kv">
-        <div class="wide">紀錄代號<b>${esc(r.id)}</b></div>
-        <div class="wide">事件時間<b>${esc(r.ts)}</b></div>
-        <div>裝置<b>${esc(r.device || '--')}</b></div>
-        <div>來源<b>${esc(r.source || '--')}</b></div>
+        <div class="wide">資料擷取時間（台灣時間）<b>${esc(r.ts.replace('T',' ').slice(0,19))}</b></div>
+        <div class="wide">寫入資料庫時間<b>${num(r.ingest) === null ? '--' : new Date(num(r.ingest)).toLocaleString('zh-TW')}</b></div>
       </div>
     </div>`;
 }
@@ -1291,7 +1310,10 @@ function renderEVDesc() {
   const part = (title, obj) => Object.keys(obj).length
     ? `<dt>${title}</dt>` + Object.entries(obj).map(([k,v]) => `<dd><code>${esc(k)}</code>：${esc(v)}</dd>`).join('')
     : '';
-  body.innerHTML = part('資料欄位（data）', r.fd) + part('設定欄位（charger_settings）', r.sd);
+  body.innerHTML = part('資料欄位（data）', r.fd) + part('設定欄位（charger_settings）', r.sd) +
+    '<dt>注意事項</dt><dd>讀不到的值，欄位會直接不存在（顯示為 --）。</dd>' +
+    '<dd>沒做實驗時資料不會更新，請看上方「線上／離線」判斷。</dd>' +
+    '<dd>reverse_current_set_a 在電源供應器韌體修正前不可信（可能出現 650 左右）。</dd>';
 }
 
 function destroyEV() {
@@ -1310,7 +1332,7 @@ function renderEVCharts() {
     const canvas = document.getElementById('evCanvas_' + m.key);
     if (!canvas) return;
     const datasets = keys.map(k => ({
-      label: (rows.find(r => r.data[k] && r.data[k].name)?.data[k].name) || k,
+      label: (rows.find(r => r.data[k] && r.data[k].name)?.data[k].name) || CHARGER_NAMES[k] || k,
       data: rows.map(r => r.data[k] ? num(r.data[k][m.key]) : null),
       borderColor: evColor(k), backgroundColor: evColor(k),
       borderWidth: 2, pointRadius: selRad, pointHoverRadius: 6, fill: false, spanGaps: true, tension: 0,
