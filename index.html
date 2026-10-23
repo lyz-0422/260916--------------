@@ -1,105 +1,52 @@
-
-
-
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ESS 儲能系統監控</title>
+<title>ESS 儲能 + EV 充電樁監控</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <style>
 * { box-sizing: border-box; }
-
-body {
-  font-family: 'Noto Sans TC', sans-serif;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8eef3 100%);
-  margin: 0;
-  padding: 40px 20px;
-  min-height: 100vh;
-  position: relative;
-  font-size: 18px;
-}
-body::before, body::after {
-  content: ''; position: fixed; border-radius: 50%; pointer-events: none;
-}
-body::before {
-  top: -100px; right: -100px; width: 400px; height: 400px;
-  background: radial-gradient(circle, rgba(160,180,200,0.15) 0%, transparent 70%);
-}
-body::after {
-  bottom: -150px; left: -150px; width: 500px; height: 500px;
-  background: radial-gradient(circle, rgba(180,160,200,0.12) 0%, transparent 70%);
-}
-
+body { font-family: 'Noto Sans TC', sans-serif; background: linear-gradient(135deg, #f5f7fa 0%, #e8eef3 100%); margin: 0; padding: 40px 20px; min-height: 100vh; position: relative; font-size: 18px; }
+body::before, body::after { content: ''; position: fixed; border-radius: 50%; pointer-events: none; }
+body::before { top: -100px; right: -100px; width: 400px; height: 400px; background: radial-gradient(circle, rgba(160,180,200,0.15) 0%, transparent 70%); }
+body::after { bottom: -150px; left: -150px; width: 500px; height: 500px; background: radial-gradient(circle, rgba(180,160,200,0.12) 0%, transparent 70%); }
 .container { max-width: 1400px; margin: 0 auto; position: relative; z-index: 1; }
 
-.header {
-  background: white; padding: 30px 40px; border-radius: 20px;
-  box-shadow: 0 2px 20px rgba(0,0,0,0.06); margin-bottom: 30px;
-  border-left: 4px solid #7a8ba0;
-  display: flex; justify-content: space-between; align-items: center;
-  flex-wrap: wrap; gap: 20px;
-}
-.header h2 {
-  margin: 0 0 8px 0; color: #2c3e50; font-size: 36px;
-  font-weight: 600; font-family: 'Noto Serif TC', serif;
-}
+/* ── 分頁切換（ESS / EV） ── */
+.view-tabs { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+.view-tab { padding: 12px 28px; border-radius: 14px; border: 2px solid #e9ecef; background: white; color: #5a6c7d; font-size: 18px; font-weight: 600; cursor: pointer; box-shadow: 0 2px 12px rgba(0,0,0,0.05); }
+.view-tab.active { background: #7a8ba0; color: white; border-color: #7a8ba0; box-shadow: 0 4px 12px rgba(122,139,160,0.3); }
+
+.header { background: white; padding: 30px 40px; border-radius: 20px; box-shadow: 0 2px 20px rgba(0,0,0,0.06); margin-bottom: 30px; border-left: 4px solid #7a8ba0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
+.header.ev { border-left-color: #00bcd4; }
+.header h2 { margin: 0 0 8px 0; color: #2c3e50; font-size: 36px; font-weight: 600; font-family: 'Noto Serif TC', serif; }
 .header-subtitle { font-size: 18px; color: #95a5a6; font-weight: 300; }
 
-.debug-panel {
-  display: none;
-  background: #f8f9fa; padding: 15px 20px; border-radius: 12px; margin-bottom: 20px;
-  border-left: 3px solid #e74c3c; font-family: monospace; font-size: 16px;
-  max-height: 200px; overflow-y: auto;
-}
+.debug-panel { display: none; background: #f8f9fa; padding: 15px 20px; border-radius: 12px; margin-bottom: 20px; border-left: 3px solid #e74c3c; font-family: monospace; font-size: 16px; max-height: 200px; overflow-y: auto; }
 .debug-title { font-weight: 600; color: #e74c3c; margin-bottom: 8px; }
-.debug-item  { color: #5a6c7d; padding: 3px 0; }
+.debug-item { color: #5a6c7d; padding: 3px 0; }
 
-.time-granularity {
-  background: white; padding: 20px 35px; border-radius: 20px;
-  box-shadow: 0 2px 20px rgba(0,0,0,0.06); margin-bottom: 20px;
-  display: flex; align-items: center; gap: 15px; flex-wrap: wrap;
-}
+.time-granularity { background: white; padding: 20px 35px; border-radius: 20px; box-shadow: 0 2px 20px rgba(0,0,0,0.06); margin-bottom: 20px; display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
 .granularity-label { font-size: 18px; font-weight: 500; color: #5a6c7d; display: flex; align-items: center; gap: 8px; }
 .granularity-buttons { display: flex; gap: 10px; }
-.source-badge {
-  margin-left: auto; font-size: 15px; font-weight: 600; padding: 6px 14px;
-  border-radius: 10px; white-space: nowrap;
-}
+.source-badge { margin-left: auto; font-size: 15px; font-weight: 600; padding: 6px 14px; border-radius: 10px; white-space: nowrap; }
 .source-badge.historical { background: #eef2f7; color: #5a6c7d; }
-.source-badge.live       { background: #fdecea; color: #c0392b; }
-.source-badge.mixed      { background: #f8f9fa; color: #95a5a6; }
-.source-badge.unknown    { background: #f8f9fa; color: #95a5a6; }
+.source-badge.live { background: #fdecea; color: #c0392b; }
+.source-badge.mixed, .source-badge.unknown { background: #f8f9fa; color: #95a5a6; }
 
-.sim-badge {
-  display: inline-block; margin-left: 10px; padding: 2px 10px;
-  background: repeating-linear-gradient(45deg, #fdf1e6, #fdf1e6 6px, #fbe5ce 6px, #fbe5ce 12px);
-  border: 1px dashed #d68a3e; color: #b5651d; border-radius: 8px;
-  font-size: 14px; font-weight: 700; vertical-align: middle;
-}
+.sim-badge { display: inline-block; margin-left: 10px; padding: 2px 10px; background: repeating-linear-gradient(45deg, #fdf1e6, #fdf1e6 6px, #fbe5ce 6px, #fbe5ce 12px); border: 1px dashed #d68a3e; color: #b5651d; border-radius: 8px; font-size: 14px; font-weight: 700; vertical-align: middle; }
 .sim-badge-sm { font-size: 11px; padding: 1px 7px; margin-left: 6px; }
-.btn-granularity {
-  padding: 10px 24px; border: 2px solid #e9ecef; border-radius: 12px;
-  background: white; color: #5a6c7d; cursor: pointer; font-weight: 500;
-  font-size: 18px; transition: all 0.3s ease; font-family: 'Noto Sans TC', sans-serif;
-}
-.btn-granularity:hover  { background: #f8f9fa; border-color: #7a8ba0; color: #2c3e50; transform: translateY(-2px); }
+.btn-granularity { padding: 10px 24px; border: 2px solid #e9ecef; border-radius: 12px; background: white; color: #5a6c7d; cursor: pointer; font-weight: 500; font-size: 18px; transition: all 0.3s ease; font-family: 'Noto Sans TC', sans-serif; }
+.btn-granularity:hover { background: #f8f9fa; border-color: #7a8ba0; color: #2c3e50; transform: translateY(-2px); }
 .btn-granularity.active { background: #7a8ba0; color: white; border-color: #7a8ba0; box-shadow: 0 4px 12px rgba(122,139,160,0.3); }
 
-.timeline-nav {
-  background: white; padding: 25px 35px; border-radius: 20px;
-  box-shadow: 0 2px 20px rgba(0,0,0,0.06); margin-bottom: 30px;
-  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
-}
-.date-group {
-  display: flex; align-items: center; gap: 12px; padding: 10px 18px;
-  background: #f8f9fa; border-radius: 12px; border: 1px solid #e9ecef;
-}
-.date-icon  { font-size: 24px; color: #7a8ba0; }
+.timeline-nav { background: white; padding: 25px 35px; border-radius: 20px; box-shadow: 0 2px 20px rgba(0,0,0,0.06); margin-bottom: 30px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.date-group { display: flex; align-items: center; gap: 12px; padding: 10px 18px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e9ecef; }
+.date-icon { font-size: 24px; color: #7a8ba0; }
 .date-group label { font-size: 18px; font-weight: 500; color: #5a6c7d; margin: 0; }
 .nav-controls { display: flex; gap: 12px; align-items: center; flex: 1; }
 .progress-indicator { flex: 1; min-width: 200px; }
@@ -107,32 +54,20 @@ body::after {
 .progress-bar-fill { height: 100%; background: linear-gradient(90deg, #7a8ba0 0%, #95aac2 100%); border-radius: 3px; transition: width 0.3s ease; }
 .progress-text { font-size: 16px; color: #95a5a6; margin-top: 5px; text-align: center; }
 
-button {
-  padding: 10px 20px; border: 1px solid #d1d8dd; border-radius: 10px;
-  background: white; color: #5a6c7d; cursor: pointer; font-weight: 500;
-  font-size: 18px; transition: all 0.3s ease; font-family: 'Noto Sans TC', sans-serif;
-}
+button { padding: 10px 20px; border: 1px solid #d1d8dd; border-radius: 10px; background: white; color: #5a6c7d; cursor: pointer; font-weight: 500; font-size: 18px; transition: all 0.3s ease; font-family: 'Noto Sans TC', sans-serif; }
 button:hover:not(:disabled) { background: #f8f9fa; border-color: #7a8ba0; color: #2c3e50; transform: translateY(-1px); }
 button:disabled { background: #f8f9fa; color: #cbd5e0; border-color: #e9ecef; cursor: not-allowed; }
+.view-tab:hover:not(:disabled) { transform: translateY(-1px); }
+.view-tab.active:hover:not(:disabled) { background: #6a7b90; color: white; }
 .btn-primary { background: #7a8ba0; color: white; border-color: #7a8ba0; }
 .btn-primary:hover:not(:disabled) { background: #6a7b90; border-color: #6a7b90; color: white; }
 
-select {
-  padding: 8px 14px; border-radius: 10px; border: 1px solid #d1d8dd;
-  font-size: 18px; background: white; color: #5a6c7d; cursor: pointer;
-  transition: all 0.3s ease; font-family: 'Noto Sans TC', sans-serif;
-}
+select { padding: 8px 14px; border-radius: 10px; border: 1px solid #d1d8dd; font-size: 18px; background: white; color: #5a6c7d; cursor: pointer; transition: all 0.3s ease; font-family: 'Noto Sans TC', sans-serif; }
 select:hover { border-color: #7a8ba0; }
 select:focus { outline: none; border-color: #7a8ba0; box-shadow: 0 0 0 3px rgba(122,139,160,0.1); }
 
-.stats-grid {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 20px;
-}
-.stat-card {
-  background: white; padding: 25px; border-radius: 16px;
-  box-shadow: 0 2px 15px rgba(0,0,0,0.05); transition: all 0.3s ease;
-  border-top: 3px solid transparent; display: flex; flex-direction: column; justify-content: center;
-}
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 20px; }
+.stat-card { background: white; padding: 25px; border-radius: 16px; box-shadow: 0 2px 15px rgba(0,0,0,0.05); transition: all 0.3s ease; border-top: 3px solid transparent; display: flex; flex-direction: column; justify-content: center; }
 .stat-card:nth-child(1) { border-top-color: #8e9eab; }
 .stat-card:nth-child(2) { border-top-color: #a8b5c0; }
 .stat-card:nth-child(3) { border-top-color: #c2cbd5; }
@@ -141,15 +76,8 @@ select:focus { outline: none; border-color: #7a8ba0; box-shadow: 0 0 0 3px rgba(
 .stat-label { font-size: 17px; color: #95a5a6; font-weight: 400; margin-bottom: 10px; }
 .stat-value { font-size: 32px; font-weight: 600; color: #2c3e50; font-family: 'Noto Serif TC', serif; }
 
-.data-cards {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 15px; margin-bottom: 15px;
-}
-.data-card {
-  background: white; padding: 20px; border-radius: 14px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.04); transition: all 0.3s ease;
-  border-left: 3px solid #dfe6e9; display: flex; flex-direction: column;
-  justify-content: center; min-height: 90px; position: relative;
-}
+.data-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 15px; margin-bottom: 15px; }
+.data-card { background: white; padding: 20px; border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); transition: all 0.3s ease; border-left: 3px solid #dfe6e9; display: flex; flex-direction: column; justify-content: center; min-height: 90px; position: relative; }
 .data-card:hover { transform: translateY(-3px); box-shadow: 0 4px 20px rgba(0,0,0,0.08); border-left-color: #7a8ba0; }
 .data-card.anomaly { border-left-color: #e74c3c; background: #fff5f5; }
 .data-card.status-info-card { border-left-color: #3498db; background: #f4f9fd; }
@@ -157,103 +85,86 @@ select:focus { outline: none; border-color: #7a8ba0; box-shadow: 0 0 0 3px rgba(
 .data-label { font-size: 15px; color: #95a5a6; font-weight: 400; display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .data-value { font-size: 22px; font-weight: 600; color: #2c3e50; font-family: 'Noto Serif TC', serif; }
-.anomaly-badge {
-  display: inline-block; padding: 2px 8px; background: #e74c3c; color: white;
-  border-radius: 8px; font-size: 13px; margin-left: 6px; font-weight: 600;
-}
-.anomaly-type-badge {
-  position: absolute; top: 8px; right: 8px;
-  padding: 2px 8px; background: #e67e22; color: white;
-  border-radius: 8px; font-size: 13px; font-weight: 600;
-  max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
+.anomaly-badge { display: inline-block; padding: 2px 8px; background: #e74c3c; color: white; border-radius: 8px; font-size: 13px; margin-left: 6px; font-weight: 600; }
+.anomaly-type-badge { position: absolute; top: 8px; right: 8px; padding: 2px 8px; background: #e67e22; color: white; border-radius: 8px; font-size: 13px; font-weight: 600; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .anomaly-type-badge.status-info { background: #3498db; }
 .anomaly-type-badge.status-warn { background: #f39c12; }
 
-.chart-container {
-  background: white; padding: 35px; border-radius: 20px;
-  box-shadow: 0 2px 20px rgba(0,0,0,0.06); margin-bottom: 30px;
-}
-.chart-header {
-  display: flex; justify-content: space-between; align-items: flex-start;
-  margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #f1f3f5;
-  gap: 16px; flex-wrap: wrap;
-}
+.chart-container { background: white; padding: 35px; border-radius: 20px; box-shadow: 0 2px 20px rgba(0,0,0,0.06); margin-bottom: 30px; }
+.chart-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #f1f3f5; gap: 16px; flex-wrap: wrap; }
 .chart-title { font-size: 22px; font-weight: 600; color: #2c3e50; font-family: 'Noto Serif TC', serif; }
 .chart-subtitle { font-size: 16px; color: #95a5a6; margin-top: 4px; }
 .legend-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 .legend-item { display: flex; align-items: center; gap: 6px; font-size: 16px; color: #5a6c7d; }
-.legend-dot  { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
-
+.legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
 .chart-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 
-.anomaly-toolbar {
-  background: white; padding: 20px 35px; border-radius: 20px;
-  box-shadow: 0 2px 20px rgba(0,0,0,0.06); margin-bottom: 20px;
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 16px; flex-wrap: wrap;
-}
+.anomaly-toolbar { background: white; padding: 20px 35px; border-radius: 20px; box-shadow: 0 2px 20px rgba(0,0,0,0.06); margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .anomaly-nav { display: flex; align-items: center; gap: 14px; }
 .anomaly-counter { font-size: 16px; color: #5a6c7d; font-weight: 500; min-width: 130px; text-align: center; }
 .anomaly-export { display: flex; gap: 10px; flex-wrap: wrap; }
-.btn-tiff {
-  padding: 8px 16px; border-radius: 10px; border: 1px solid #7a8ba0;
-  background: white; color: #7a8ba0; font-size: 14px; font-weight: 600;
-  cursor: pointer; transition: all 0.25s ease; white-space: nowrap;
-  font-family: 'Noto Sans TC', sans-serif; display: inline-flex; align-items: center; gap: 6px;
-}
+.btn-tiff { padding: 8px 16px; border-radius: 10px; border: 1px solid #7a8ba0; background: white; color: #7a8ba0; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.25s ease; white-space: nowrap; font-family: 'Noto Sans TC', sans-serif; display: inline-flex; align-items: center; gap: 6px; }
 .btn-tiff:hover { background: #7a8ba0; color: #fff; box-shadow: 0 3px 10px rgba(122,139,160,0.35); }
 .btn-tiff:active { transform: translateY(1px); }
 .btn-tiff.saved { border-color: #27ae60; color: #27ae60; }
 .btn-tiff-full { font-size: 16px; padding: 10px 20px; flex-shrink: 0; }
 
-.trend-indicator {
-  position: fixed; bottom: 30px; right: 30px; background: white;
-  padding: 20px 25px; border-radius: 16px; box-shadow: 0 4px 25px rgba(0,0,0,0.1);
-  min-width: 200px; z-index: 1000;
-}
+.trend-indicator { position: fixed; bottom: 30px; right: 30px; background: white; padding: 20px 25px; border-radius: 16px; box-shadow: 0 4px 25px rgba(0,0,0,0.1); min-width: 200px; z-index: 1000; }
 .trend-title { font-size: 16px; color: #95a5a6; font-weight: 500; margin-bottom: 12px; text-transform: uppercase; }
 .trend-value { font-size: 28px; font-weight: 600; color: #2c3e50; font-family: 'Noto Serif TC', serif; }
 .trend-change { font-size: 17px; margin-top: 8px; }
-.trend-up   { color: #27ae60; }
-.trend-down { color: #e74c3c; }
-.trend-flat { color: #95a5a6; }
+.trend-up { color: #27ae60; } .trend-down { color: #e74c3c; } .trend-flat { color: #95a5a6; }
+
+/* ── EV 充電樁專用 ── */
+.ev-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 20px; }
+.ev-card { background: white; padding: 22px 24px; border-radius: 16px; box-shadow: 0 2px 15px rgba(0,0,0,0.05); border-top: 4px solid #7a8ba0; }
+.ev-card-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
+.ev-card-name { font-family: 'Noto Serif TC', serif; font-weight: 600; font-size: 20px; color: #2c3e50; }
+.ev-card-key { font-size: 13px; color: #95a5a6; }
+.ev-state { padding: 3px 12px; border-radius: 10px; font-size: 14px; font-weight: 700; color: white; background: #95a5a6; white-space: nowrap; }
+.ev-state.charging { background: #27ae60; } .ev-state.discharging { background: #e67e22; } .ev-state.idle { background: #95a5a6; }
+.ev-kv { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; }
+.ev-kv div { font-size: 14px; color: #95a5a6; }
+.ev-kv b { display: block; font-size: 20px; color: #2c3e50; font-family: 'Noto Serif TC', serif; font-weight: 600; }
+.ev-kv .wide { grid-column: 1 / -1; }
+.ev-kv .wide b { font-size: 16px; }
+.ev-desc { background: white; border-radius: 16px; padding: 16px 24px; margin-bottom: 20px; box-shadow: 0 2px 15px rgba(0,0,0,0.05); font-size: 15px; color: #5a6c7d; }
+.ev-desc summary { cursor: pointer; font-weight: 600; }
+.ev-desc dt { font-weight: 600; margin-top: 8px; color: #2c3e50; }
+.ev-desc dd { margin: 2px 0 0 0; }
+.ev-slider { width: 100%; }
 
 .hidden { display: none !important; }
-
 @keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
 .fade-in { animation: fadeIn 0.5s ease; }
 
-@media(max-width:1200px) {
-  .stats-grid { grid-template-columns: repeat(2,1fr); }
-}
+@media(max-width:1200px) { .stats-grid { grid-template-columns: repeat(2,1fr); } }
 @media(max-width:768px) {
   body { padding: 20px 15px; }
   .header { padding: 20px 25px; }
   .time-granularity, .timeline-nav { flex-direction: column; align-items: stretch; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
-  .data-cards  { grid-template-columns: repeat(2,1fr); }
+  .data-cards { grid-template-columns: repeat(2,1fr); }
   .chart-container { padding: 20px; }
   .trend-indicator { position: relative; bottom: auto; right: auto; margin-bottom: 20px; }
   .chart-actions { margin-left: 0; }
 }
 /* ═══════════ 手機版 / 觸控優化 ═══════════ */
 html { -webkit-text-size-adjust: 100%; }
-canvas { max-width: 100%; touch-action: pan-y; }   /* 垂直滑動捲頁面，水平滑動平移圖表，雙指縮放 */
+canvas { max-width: 100%; touch-action: pan-y; }
 .container, .container > * { min-width: 0; }
 @media(max-width:768px) {
   body { font-size: 16px; padding: 14px 10px 24px; }
+  .view-tab { flex: 1 1 40%; padding: 12px 10px; font-size: 16px; text-align: center; }
   .header { padding: 16px 18px; gap: 12px; border-radius: 16px; }
   .header h2 { font-size: 24px; margin-bottom: 4px; }
   .header-subtitle { font-size: 14px; }
   .btn-tiff-full { width: 100%; justify-content: center; }
-
   .time-granularity, .timeline-nav, .anomaly-toolbar { padding: 14px 16px; border-radius: 16px; gap: 10px; }
   .granularity-label { font-size: 16px; }
   .granularity-buttons { flex-wrap: wrap; width: 100%; gap: 8px; }
   .btn-granularity { flex: 1 1 auto; padding: 10px 12px; font-size: 15px; min-height: 44px; }
   .source-badge { margin-left: 0; white-space: normal; font-size: 13px; }
-
   .date-group { width: 100%; padding: 8px 12px; }
   .date-group select { flex: 1; min-width: 0; }
   .nav-controls { flex-wrap: wrap; width: 100%; }
@@ -261,13 +172,11 @@ canvas { max-width: 100%; touch-action: pan-y; }   /* 垂直滑動捲頁面，�
   .progress-indicator { flex: 1 1 100%; min-width: 0; order: 3; }
   button { font-size: 15px; padding: 10px 14px; min-height: 44px; }
   select { font-size: 16px; }
-
   .anomaly-nav { width: 100%; flex-wrap: wrap; justify-content: center; gap: 8px; }
   .anomaly-nav button { flex: 1 1 40%; }
   .anomaly-counter { order: -1; flex: 1 1 100%; min-width: 0; }
   .anomaly-export { width: 100%; }
   .anomaly-export .btn-tiff { flex: 1 1 100%; justify-content: center; }
-
   .stats-grid { gap: 10px; }
   .stat-card { padding: 14px; border-radius: 14px; }
   .stat-label { font-size: 14px; margin-bottom: 6px; }
@@ -276,7 +185,6 @@ canvas { max-width: 100%; touch-action: pan-y; }   /* 垂直滑動捲頁面，�
   .data-card { padding: 12px 14px; min-height: 76px; }
   .data-label { font-size: 13px; }
   .data-value { font-size: 18px; }
-
   .chart-container { padding: 14px; border-radius: 16px; }
   .chart-header { flex-direction: column; align-items: stretch; margin-bottom: 14px; }
   .chart-title { font-size: 18px; }
@@ -284,10 +192,11 @@ canvas { max-width: 100%; touch-action: pan-y; }   /* 垂直滑動捲頁面，�
   .legend-row { gap: 10px; }
   .legend-item { font-size: 13px; }
   .chart-actions { flex-wrap: wrap; }
-
   .trend-indicator { padding: 14px 16px; min-width: 0; }
   .trend-value { font-size: 24px; }
   .debug-panel { font-size: 13px; }
+  .ev-card { padding: 16px; }
+  .ev-kv b { font-size: 17px; }
 }
 @media(max-width:400px) {
   .stat-value { font-size: 19px; }
@@ -299,6 +208,22 @@ canvas { max-width: 100%; touch-action: pan-y; }   /* 垂直滑動捲頁面，�
 <body>
 <div class="container">
 
+  <!-- ═══════════ 分頁切換 ═══════════ -->
+  <div class="view-tabs no-export">
+    <button class="view-tab active" id="tabESS" onclick="setView('ess')">🔋 ESS 儲能系統</button>
+    <button class="view-tab" id="tabEV" onclick="setView('ev')">🔌 EV 充電樁</button>
+  </div>
+
+  <div class="debug-panel fade-in" id="debugPanel">
+    <div class="debug-title">🔍 系統除錯資訊</div>
+    <div id="debugLog"></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       ESS 儲能系統（原有內容，未更動）
+       ═══════════════════════════════════════ -->
+  <div id="viewESS">
+
   <div id="dashboardExportArea">
 
   <div class="header fade-in">
@@ -307,11 +232,6 @@ canvas { max-width: 100%; touch-action: pan-y; }   /* 垂直滑動捲頁面，�
       <div class="header-subtitle" id="lastUpdate">正在連接 Firebase...</div>
     </div>
     <button class="btn-tiff btn-tiff-full no-export" id="tiffBtnFull" onclick="downloadChartAsTiff('dashboardExportArea','ESS_儀表板_整頁', 'tiffBtnFull')">📸 下載整頁 TIFF</button>
-  </div>
-
-  <div class="debug-panel fade-in" id="debugPanel">
-    <div class="debug-title">🔍 系統除錯資訊</div>
-    <div id="debugLog"></div>
   </div>
 
   <div class="time-granularity fade-in">
@@ -372,53 +292,20 @@ canvas { max-width: 100%; touch-action: pan-y; }   /* 垂直滑動捲頁面，�
   <div id="anomalyDetailArea">
 
   <div class="data-cards fade-in" id="dataCards1">
-    <div class="data-card">
-      <div class="data-label"><span class="dot" style="background:#546e7a"></span>時間</div>
-      <div id="dTime" class="data-value" style="font-size:17px">--</div>
-    </div>
-    <div class="data-card">
-      <div class="data-label"><span class="dot" style="background:#2ecc71"></span>原始負載 (kW)</div>
-      <div id="dBeforeLoad" class="data-value">--</div>
-    </div>
-    <div class="data-card">
-      <div class="data-label"><span class="dot" style="background:#fbc02d"></span>調節後負載 (kW)</div>
-      <div id="dAfterLoad" class="data-value">--</div>
-    </div>
-    <div class="data-card">
-      <div class="data-label"><span class="dot" style="background:#ff4757"></span>契約容量 (kW)</div>
-      <div id="dContract" class="data-value">--</div>
-    </div>
-    <div class="data-card">
-      <div class="data-label"><span class="dot" style="background:#00bcd4"></span>ESS 功率 (kW)</div>
-      <div id="dEssPower" class="data-value">--</div>
-    </div>
-    <div class="data-card">
-      <div class="data-label"><span class="dot" style="background:#e74c3c"></span>超約量 (kW)</div>
-      <div id="dOverContract" class="data-value">--</div>
-    </div>
+    <div class="data-card"><div class="data-label"><span class="dot" style="background:#546e7a"></span>時間</div><div id="dTime" class="data-value" style="font-size:17px">--</div></div>
+    <div class="data-card"><div class="data-label"><span class="dot" style="background:#2ecc71"></span>原始負載 (kW)</div><div id="dBeforeLoad" class="data-value">--</div></div>
+    <div class="data-card"><div class="data-label"><span class="dot" style="background:#fbc02d"></span>調節後負載 (kW)</div><div id="dAfterLoad" class="data-value">--</div></div>
+    <div class="data-card"><div class="data-label"><span class="dot" style="background:#ff4757"></span>契約容量 (kW)</div><div id="dContract" class="data-value">--</div></div>
+    <div class="data-card"><div class="data-label"><span class="dot" style="background:#00bcd4"></span>ESS 功率 (kW)</div><div id="dEssPower" class="data-value">--</div></div>
+    <div class="data-card"><div class="data-label"><span class="dot" style="background:#e74c3c"></span>超約量 (kW)</div><div id="dOverContract" class="data-value">--</div></div>
   </div>
 
   <div class="data-cards fade-in" id="dataCards2">
-    <div class="data-card">
-      <div class="data-label"><span class="dot" style="background:#ffd93d"></span>SOC (%)</div>
-      <div id="dSOC" class="data-value">--</div>
-    </div>
-    <div class="data-card">
-      <div class="data-label"><span class="dot" style="background:#a29bfe"></span>SOH (%)<span class="sim-badge sim-badge-sm">模擬</span></div>
-      <div id="dSOH" class="data-value">--</div>
-    </div>
-    <div class="data-card">
-      <div class="data-label"><span class="dot" style="background:#fd79a8"></span>Cell V Diff (V)<span class="sim-badge sim-badge-sm">模擬</span></div>
-      <div id="dCellV" class="data-value">--</div>
-    </div>
-    <div class="data-card">
-      <div class="data-label"><span class="dot" style="background:#e74c3c"></span>自放電率<span class="sim-badge sim-badge-sm">模擬</span></div>
-      <div id="dSelfDischarge" class="data-value">--</div>
-    </div>
-    <div class="data-card" id="dAnomalyCard">
-      <div class="data-label"><span class="dot" style="background:#e74c3c"></span>異常狀態</div>
-      <div id="dAnomalyVal" class="data-value">--</div>
-    </div>
+    <div class="data-card"><div class="data-label"><span class="dot" style="background:#ffd93d"></span>SOC (%)</div><div id="dSOC" class="data-value">--</div></div>
+    <div class="data-card"><div class="data-label"><span class="dot" style="background:#a29bfe"></span>SOH (%)<span class="sim-badge sim-badge-sm">模擬</span></div><div id="dSOH" class="data-value">--</div></div>
+    <div class="data-card"><div class="data-label"><span class="dot" style="background:#fd79a8"></span>Cell V Diff (V)<span class="sim-badge sim-badge-sm">模擬</span></div><div id="dCellV" class="data-value">--</div></div>
+    <div class="data-card"><div class="data-label"><span class="dot" style="background:#e74c3c"></span>自放電率<span class="sim-badge sim-badge-sm">模擬</span></div><div id="dSelfDischarge" class="data-value">--</div></div>
+    <div class="data-card" id="dAnomalyCard"><div class="data-label"><span class="dot" style="background:#e74c3c"></span>異常狀態</div><div id="dAnomalyVal" class="data-value">--</div></div>
   </div>
 
   <div class="chart-container fade-in" id="chartCard1">
@@ -487,26 +374,67 @@ canvas { max-width: 100%; touch-action: pan-y; }   /* 垂直滑動捲頁面，�
     <div class="trend-change" id="trendChange"><span class="trend-flat">--</span></div>
   </div>
 
+  </div><!-- /viewESS -->
+
+  <!-- ═══════════════════════════════════════
+       EV 充電樁（新增，資料來源：/EV_charger_data）
+       ═══════════════════════════════════════ -->
+  <div id="viewEV" class="hidden">
+  <div id="evExportArea">
+
+    <div class="header ev fade-in">
+      <div>
+        <h2>EV 充電樁監控儀表板</h2>
+        <div class="header-subtitle" id="evLastUpdate">正在連接 Firebase...</div>
+      </div>
+      <button class="btn-tiff btn-tiff-full no-export" id="tiffBtnEvFull" onclick="downloadChartAsTiff('evExportArea','EV_儀表板_整頁','tiffBtnEvFull')">📸 下載整頁 TIFF</button>
+    </div>
+
+    <div class="timeline-nav fade-in no-export">
+      <div class="date-group">
+        <span class="date-icon">📅</span>
+        <label>日期</label>
+        <select id="evDateSelect"></select>
+      </div>
+      <div class="nav-controls">
+        <button id="evPrev">← 上一筆</button>
+        <button id="evNext">下一筆 →</button>
+        <div class="progress-indicator">
+          <input type="range" id="evSlider" class="ev-slider" min="0" max="0" value="0">
+          <div id="evProgressText" class="progress-text">0 / 0</div>
+        </div>
+      </div>
+      <button onclick="resetZoom()" class="btn-primary">重置視圖</button>
+    </div>
+
+    <div class="stats-grid fade-in">
+      <div class="stat-card"><div class="stat-label">當日資料筆數</div><div id="eStat1" class="stat-value">--</div></div>
+      <div class="stat-card"><div class="stat-label">平均 SOC（所有櫃）</div><div id="eStat2" class="stat-value">--</div></div>
+      <div class="stat-card"><div class="stat-label">最高溫度</div><div id="eStat3" class="stat-value">--</div></div>
+      <div class="stat-card"><div class="stat-label">目前資料時間</div><div id="eStat4" class="stat-value" style="font-size:20px">--</div></div>
+    </div>
+
+    <div class="ev-grid fade-in" id="evCards"></div>
+
+    <div id="evCharts"></div>
+  </div>
+
+  <details class="ev-desc fade-in no-export" id="evDesc">
+    <summary>📖 欄位說明（來自資料中的 field_desc / settings_desc）</summary>
+    <dl id="evDescBody"></dl>
+  </details>
+  </div><!-- /viewEV -->
+
 </div>
 
 <script type="module">
 import { initializeApp }      from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js";
 import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-database.js";
-// ★ App Check 已停用（見下方 ENABLE_APP_CHECK）。essssimulation3 這個新專案如果你有另外設定
-//   reCAPTCHA v3 的 App Check，把 ENABLE_APP_CHECK 改成 true，並填入你自己的 site key。
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app-check.js";
 
-// ══════════════════════════════════════════════════════════════════
-// ★★★ 請改成你自己的 Firebase「網頁 App」設定 ★★★
-// 這組設定跟 Colab/Notebook 裡用的服務帳號金鑰 JSON 是兩回事，
-// 要去 Firebase 主控台 →（齒輪）專案設定 → 一般 → 你的應用程式 → SDK 設定與程式碼
-// 複製「網頁應用程式」的 firebaseConfig 貼進來。
-// databaseURL 已經照你 notebook 裡的 FIREBASE_DATABASE_URL 幫你填好了，
-// 其餘 apiKey / appId / messagingSenderId / storageBucket 需要你自己補上。
-// ══════════════════════════════════════════════════════════════════
-const DEBUG = new URLSearchParams(location.search).get('debug') === '1'; // 網址加 ?debug=1 可顯示除錯面板
-const ENABLE_VIEWER_SYNC = true; // true：訪客選日期/時間會寫入 viewerDate/viewerTime（供 Unity/場域端讀取）；設 false 則網頁完全唯讀
-const ENABLE_APP_CHECK = false; // 如果 essssimulation3 這個專案有另外設定 App Check，改成 true 並填 RECAPTCHA_SITE_KEY
+const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
+const ENABLE_VIEWER_SYNC = true;
+const ENABLE_APP_CHECK = false;
 const RECAPTCHA_SITE_KEY = "PUT_YOUR_RECAPTCHA_V3_SITE_KEY_HERE";
 
 const firebaseConfig = {
@@ -521,12 +449,11 @@ const firebaseConfig = {
 };
 
 const S = { data:[], filtered:[], agg:[], idx:0, mode:'day', sourceFilter:'all', charts:{} };
+// ★ EV 充電樁狀態：data = 全部紀錄、rows = 目前日期的紀錄、idx = 目前選取筆、view = 目前分頁
+const E = { data:[], rows:[], idx:0, charts:{}, view:'ess', chargers:[] };
 
-// ★ 歷史 CSV 匯入的資料涵蓋到這一天（含）；沒有 source 欄位的舊資料用這個日期回退判斷
-//   是「歷史訓練資料」還是「即時監測資料」。之後 notebook 端記得加 source 欄位就不用靠這個猜了。
 const HISTORICAL_CUTOFF_DATE = '2026-08-31';
 
-// v6：PV 相關的三種異常類型已移除，只剩電池診斷三種
 const ANOMALY_COLORS = {
   normal:              null,
   cell_inconsistency:  '#a29bfe',
@@ -534,7 +461,6 @@ const ANOMALY_COLORS = {
   soh_degradation:     '#fbc02d',
 };
 
-// v6 即時運行時，is_anomaly 仍是 0，但 anomaly_type 可能是這兩種「系統狀態」而非真異常
 const STATUS_BADGES = {
   ACCUMULATING:          { text: '📊 累積資料中', cls: 'status-info' },
   EMS_DISABLED_NO_MODEL: { text: '⚠ 無SOC，未推論', cls: 'status-warn' },
@@ -554,7 +480,21 @@ function log(msg, type='info') {
 }
 
 // ══════════════════════════════════════════
-// ★ 異常導覽：跳到上一個/下一個異常，並自動顯示 Chart.js 內建提示框
+// ★ 分頁切換
+// ══════════════════════════════════════════
+window.setView = (v) => {
+  E.view = v;
+  document.getElementById('viewESS').classList.toggle('hidden', v !== 'ess');
+  document.getElementById('viewEV').classList.toggle('hidden',  v !== 'ev');
+  document.getElementById('tabESS').classList.toggle('active', v === 'ess');
+  document.getElementById('tabEV').classList.toggle('active',  v === 'ev');
+  // 隱藏中的 canvas 尺寸為 0，切換後重畫才會正確
+  if (v === 'ev' && E.rows.length) renderEVCharts();
+  if (v === 'ess' && S.filtered.length) renderCharts();
+};
+
+// ══════════════════════════════════════════
+// ★ 異常導覽（ESS）
 // ══════════════════════════════════════════
 function getAnomalyIndices() {
   const arr = [];
@@ -589,10 +529,7 @@ function updateAnomalyCounter() {
   el.textContent = pos >= 0 ? `異常 ${pos+1} / ${idxs.length}（目前）` : `本日共 ${idxs.length} 個異常`;
 }
 
-function refreshAnomalyState() {
-  syncAnomalyTooltip();
-  updateAnomalyCounter();
-}
+function refreshAnomalyState() { syncAnomalyTooltip(); updateAnomalyCounter(); }
 
 window.jumpAnomaly = (dir) => {
   if (S.mode !== 'day' || !S.filtered.length) return;
@@ -614,18 +551,16 @@ window.jumpAnomaly = (dir) => {
 };
 
 // ══════════════════════════════════════════
-// ★ TIFF 匯出工具（未壓縮 baseline TIFF，讀取 canvas 像素資料自行組檔）
+// ★ TIFF 匯出工具
 // ══════════════════════════════════════════
 function canvasToTiffBlob(canvas, bgColor = '#ffffff') {
   const w = canvas.width, h = canvas.height;
-
   const off = document.createElement('canvas');
   off.width = w; off.height = h;
   const octx = off.getContext('2d');
   octx.fillStyle = bgColor;
   octx.fillRect(0, 0, w, h);
   octx.drawImage(canvas, 0, 0);
-
   const imgData = octx.getImageData(0, 0, w, h).data;
 
   const samplesPerPixel = 3;
@@ -641,19 +576,9 @@ function canvasToTiffBlob(canvas, bgColor = '#ffffff') {
   }
 
   const entries = [
-    [256, 3, 1, w],
-    [257, 3, 1, h],
-    [258, 3, 3, 'bps'],
-    [259, 3, 1, 1],
-    [262, 3, 1, 2],
-    [273, 4, 1, 'strip'],
-    [277, 3, 1, samplesPerPixel],
-    [278, 3, 1, h],
-    [279, 4, 1, stripByteCount],
-    [282, 5, 1, 'xres'],
-    [283, 5, 1, 'yres'],
-    [284, 3, 1, 1],
-    [296, 3, 1, 2],
+    [256, 3, 1, w], [257, 3, 1, h], [258, 3, 3, 'bps'], [259, 3, 1, 1], [262, 3, 1, 2],
+    [273, 4, 1, 'strip'], [277, 3, 1, samplesPerPixel], [278, 3, 1, h], [279, 4, 1, stripByteCount],
+    [282, 5, 1, 'xres'], [283, 5, 1, 'yres'], [284, 3, 1, 1], [296, 3, 1, 2],
   ];
 
   const numEntries = entries.length;
@@ -676,7 +601,6 @@ function canvasToTiffBlob(canvas, bgColor = '#ffffff') {
 
   let offset = headerSize;
   view.setUint16(offset, numEntries, true); offset += 2;
-
   const offsetMap = { bps: bpsOffset, strip: stripOffset, xres: xresOffset, yres: yresOffset };
 
   for (const [tag, type, count, val] of entries) {
@@ -696,7 +620,6 @@ function canvasToTiffBlob(canvas, bgColor = '#ffffff') {
   view.setUint32(yresOffset, 300, true); view.setUint32(yresOffset + 4, 1, true);
 
   new Uint8Array(buffer, stripOffset, stripByteCount).set(pixelBuffer);
-
   return new Blob([buffer], { type: 'image/tiff' });
 }
 
@@ -706,7 +629,6 @@ async function captureContainerAsTiff(containerId) {
   if (typeof html2canvas === 'undefined') {
     throw new Error('html2canvas 尚未載入，請確認網路可連到 cdn.jsdelivr.net 後重新整理頁面');
   }
-
   const captured = await html2canvas(container, {
     backgroundColor: '#ffffff',
     scale: 2,
@@ -714,16 +636,12 @@ async function captureContainerAsTiff(containerId) {
     ignoreElements: (el) => el.classList && (el.classList.contains('chart-actions') || el.classList.contains('no-export') || el.id === 'debugPanel'),
     onclone: (clonedDoc, clonedEl) => {
       const style = clonedDoc.createElement('style');
-      style.textContent = `
-        * { animation: none !important; transition: none !important; }
-        .fade-in { opacity: 1 !important; transform: none !important; }
-      `;
+      style.textContent = `* { animation: none !important; transition: none !important; } .fade-in { opacity: 1 !important; transform: none !important; }`;
       clonedDoc.head.appendChild(style);
       clonedEl.style.opacity = '1';
       clonedEl.style.transform = 'none';
     },
   });
-
   return canvasToTiffBlob(captured);
 }
 
@@ -743,7 +661,6 @@ window.downloadChartAsTiff = async (containerId, filenameBase, btnId) => {
   const btn = btnId ? document.getElementById(btnId) : null;
   const originalText = btn ? btn.textContent : null;
   if (btn) { btn.disabled = true; btn.textContent = '匯出中…'; }
-
   try {
     const blob = await captureContainerAsTiff(containerId);
     triggerTiffDownload(blob, filenameBase);
@@ -774,18 +691,14 @@ window.exportAllAnomalies = async () => {
     document.getElementById('debugPanel').style.display = 'block';
     return;
   }
-
   const originalText = btn ? btn.textContent : null;
   if (btn) btn.disabled = true;
 
   for (let n = 0; n < idxs.length; n++) {
     S.idx = idxs[n];
     selectTime(S.filtered[S.idx].ts.slice(11,16));
-    updateCard();
-    updateTrend();
-    refreshAnomalyState();
+    updateCard(); updateTrend(); refreshAnomalyState();
     await new Promise(r => setTimeout(r, 250));
-
     try {
       const d = S.filtered[S.idx];
       const label = `異常_${d.ts.slice(0,10)}_${d.ts.slice(11,16).replace(':','')}_${d.anomaly_type}`;
@@ -795,17 +708,15 @@ window.exportAllAnomalies = async () => {
       console.error(e);
       log(`❌ 第 ${n+1} 筆異常匯出失敗: ${e.message}`, 'err');
     }
-
     if (btn) btn.textContent = `匯出中 ${n+1}/${idxs.length}`;
     await new Promise(r => setTimeout(r, 350));
   }
-
   if (btn) { btn.textContent = originalText; btn.disabled = false; }
   log(`✅ 已匯出本日 ${idxs.length} 筆異常圖`, 'ok');
 };
 
 // ══════════════════════════════════════════
-// ★ Web → 場域控制器（寫入 Firebase，供其他監看端/Unity 讀取）
+// ★ Web → 場域控制器（ESS）
 // ══════════════════════════════════════════
 function selectDate(date) {
   if (!ENABLE_VIEWER_SYNC) return;
@@ -836,10 +747,13 @@ if (ENABLE_APP_CHECK) {
   });
 }
 
+// ══════════════════════════════════════════
+// ESS 資料監聽：/ems_data
+// ══════════════════════════════════════════
 onValue(ref(db, '/ems_data'), snap => {
-  log('📡 收到數據更新');
+  log('📡 收到 ESS 數據更新');
   const raw = snap.val();
-  if (!raw) { log('❌ Firebase 無數據，請先執行 notebook 上傳（upload_to_fb=True 或啟動階段二即時監測）', 'err'); return; }
+  if (!raw) { log('❌ Firebase 無 ESS 數據（/ems_data），請先執行 notebook 上傳', 'err'); return; }
 
   S.data = [];
   let cnt = 0;
@@ -871,13 +785,48 @@ onValue(ref(db, '/ems_data'), snap => {
   });
 
   S.data.sort((a,b) => new Date(a.ts) - new Date(b.ts));
-  log(`✅ 解析完成：${cnt} 筆，${Object.keys(raw).length} 天`, 'ok');
+  log(`✅ ESS 解析完成：${cnt} 筆，${Object.keys(raw).length} 天`, 'ok');
   document.getElementById('lastUpdate').textContent =
     `✅ 更新時間: ${new Date().toLocaleString('zh-TW')} | 數據筆數: ${cnt}`;
   if (!DEBUG) setTimeout(() => document.getElementById('debugPanel').style.display='none', 3000);
   initView();
+}, err => { log(`❌ ESS 連接錯誤: ${err.message}`, 'err'); });
 
-}, err => { log(`❌ 連接錯誤: ${err.message}`, 'err'); });
+// ══════════════════════════════════════════
+// ★ EV 充電樁資料監聽：/EV_charger_data
+//   每筆紀錄 key 形如 charger_YYYYMMDD_HHMMSS，內含：
+//   data{charger_N:{current_a,max_temp_c,name,soc,soh,voltage_v}}、
+//   charger_settings{charger_N:{battery_state,mode,output_on,reverse_*_set_*,output_*_set_*}}、
+//   event_time / ingest_time / source / device_id / field_desc / settings_desc
+//   之後新匯入的紀錄會即時出現（onValue 持續監聽）。
+// ══════════════════════════════════════════
+onValue(ref(db, '/EV_charger_data'), snap => {
+  log('📡 收到 EV 充電樁數據更新');
+  const raw = snap.val();
+  if (!raw) {
+    log('❌ Firebase 無 EV 數據（/EV_charger_data）', 'err');
+    document.getElementById('evLastUpdate').textContent = '⚠ 尚無 EV 充電樁資料';
+    return;
+  }
+  E.data = [];
+  Object.keys(raw).forEach(k => {
+    const r = raw[k];
+    if (!r || typeof r !== 'object' || !r.event_time) return;
+    E.data.push({
+      id: k, ts: r.event_time, ingest: r.ingest_time, source: r.source || '', device: r.device_id || '',
+      data: r.data || {}, settings: r.charger_settings || {},
+      fd: r.field_desc || {}, sd: r.settings_desc || {},
+    });
+  });
+  E.data.sort((a,b) => Date.parse(a.ts) - Date.parse(b.ts));
+  const set_ = new Set();
+  E.data.forEach(r => { Object.keys(r.data).forEach(c => set_.add(c)); Object.keys(r.settings).forEach(c => set_.add(c)); });
+  E.chargers = [...set_].sort();
+  log(`✅ EV 解析完成：${E.data.length} 筆，${E.chargers.length} 個充電樁`, 'ok');
+  document.getElementById('evLastUpdate').textContent =
+    `✅ 更新時間: ${new Date().toLocaleString('zh-TW')} | 數據筆數: ${E.data.length}`;
+  initEV();
+}, err => { log(`❌ EV 連接錯誤: ${err.message}（請確認 Realtime Database 規則允許讀取 /EV_charger_data）`, 'err'); document.getElementById('debugPanel').style.display='block'; });
 
 window.setMode = (mode, btn) => {
   S.mode = mode;
@@ -1043,14 +992,13 @@ function updateCard() {
   const aCard = document.getElementById('dAnomalyCard');
   const aVal  = document.getElementById('dAnomalyVal');
   aCard.querySelectorAll('.anomaly-badge,.anomaly-type-badge').forEach(t=>t.remove());
-  document.querySelectorAll('.data-card').forEach(c=>c.classList.remove('anomaly','status-info-card','status-warn-card'));
+  document.querySelectorAll('#viewESS .data-card').forEach(c=>c.classList.remove('anomaly','status-info-card','status-warn-card'));
 
   if (d.is_anomaly===1) {
-    document.querySelectorAll('.data-card').forEach(c=>c.classList.add('anomaly'));
+    document.querySelectorAll('#viewESS .data-card').forEach(c=>c.classList.add('anomaly'));
     aVal.textContent = '異常';
     aVal.insertAdjacentHTML('afterend',`<span class="anomaly-type-badge">${d.anomaly_type}</span>`);
   } else if (STATUS_BADGES[d.anomaly_type]) {
-    // 即時運行時的系統狀態（非真異常）：資料累積中 / 無 SOC 無法推論
     const b = STATUS_BADGES[d.anomaly_type];
     aCard.classList.add(b.cls === 'status-info' ? 'status-info-card' : 'status-warn-card');
     aVal.textContent = '正常';
@@ -1080,23 +1028,18 @@ document.getElementById('prev').onclick = () => {
   if (S.idx > 0) {
     S.idx--;
     selectTime(S.filtered[S.idx].ts.slice(11,16));
-    updateCard();
-    updateTrend();
-    refreshAnomalyState();
+    updateCard(); updateTrend(); refreshAnomalyState();
   }
 };
-
 document.getElementById('next').onclick = () => {
   if (S.idx < S.filtered.length - 1) {
     S.idx++;
     selectTime(S.filtered[S.idx].ts.slice(11,16));
-    updateCard();
-    updateTrend();
-    refreshAnomalyState();
+    updateCard(); updateTrend(); refreshAnomalyState();
   }
 };
 
-// ★ 手機版：圖表改成較高的長寬比、刻度字縮小、支援雙指縮放
+// ★ 手機版：圖表長寬比、刻度字、雙指縮放
 const MQ_MOBILE = window.matchMedia('(max-width: 768px)');
 let TK = MQ_MOBILE.matches ? 11 : 14;
 const COMMON = {
@@ -1109,25 +1052,21 @@ const COMMON = {
     legend:{display:false},
     tooltip:{ mode:'index',intersect:false, titleFont:{size:15}, bodyFont:{size:14} }
   },
-  scales:{
-    x:{ ticks:{ font:{ size:TK } } },
-    y:{ ticks:{ font:{ size:TK } } }
-  },
+  scales:{ x:{ ticks:{ font:{ size:TK } } }, y:{ ticks:{ font:{ size:TK } } } },
   onClick:(e,els) => {
     if (els.length && S.mode==='day') {
       S.idx = els[0].index;
       selectTime(S.filtered[S.idx].ts.slice(11,16));
-      updateCard();
-      updateTrend();
-      refreshAnomalyState();
+      updateCard(); updateTrend(); refreshAnomalyState();
     }
   }
 };
 
-MQ_MOBILE.addEventListener('change', e => {   // 旋轉手機或縮放視窗跨過斷點時重畫圖表
+MQ_MOBILE.addEventListener('change', e => {
   TK = e.matches ? 11 : 14;
   if (e.matches) COMMON.aspectRatio = 1.4; else delete COMMON.aspectRatio;
   if (S.filtered && S.filtered.length) renderCharts();
+  if (E.rows.length) renderEVCharts();
 });
 
 function destroyAll(){
@@ -1197,7 +1136,210 @@ function renderAgg() {
   ]},options:{...COMMON,scales:{x:{ticks:{font:{size:TK}}},y:{ticks:{font:{size:TK}},min:0,max:100},y1:{ticks:{font:{size:TK}},position:'right',min:0}}}});
 }
 
-window.resetZoom = ()=>{ ['c1','c2','c3'].forEach(k=>{ if(S.charts[k]) S.charts[k].resetZoom(); }); };
+// ══════════════════════════════════════════════════════════════
+// ★★★ EV 充電樁：資料處理 + 畫面 + 圖表 ★★★
+// ══════════════════════════════════════════════════════════════
+const EV_COLORS = ['#00bcd4', '#e67e22', '#8e44ad', '#27ae60', '#e84393', '#2d3436'];
+const evColor = k => EV_COLORS[Math.max(0, E.chargers.indexOf(k)) % EV_COLORS.length];
+
+// 要畫的圖：每個指標一張圖，每個充電樁一條線
+const EV_METRICS = [
+  { key:'soc',        title:'電量 SOC（%）',          sub:'各充電樁電池組電量',                         unit:'%',  min:0, max:100 },
+  { key:'current_a',  title:'電池組電流（A）',         sub:'正值＝充電、負值＝放電（0 線為分界）',        unit:'A',  zero:true },
+  { key:'voltage_v',  title:'電池組電壓（V）',         sub:'各充電樁電池組電壓',                         unit:'V' },
+  { key:'max_temp_c', title:'電池組最高溫（°C）',      sub:'各充電樁電池組最高溫度',                     unit:'°C' },
+  { key:'soh',        title:'健康度 SOH（%）',         sub:'各充電樁電池組健康度',                       unit:'%',  min:0, max:100 },
+];
+
+const num = v => (v === undefined || v === null || v === '' || isNaN(+v)) ? null : +v;
+const fmt = (v, d=1, u='') => v === null ? '--' : (+v).toFixed(d) + u;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// 一次建好圖表卡片的 HTML（每次資料更新不需重建）
+(function buildEVChartCards() {
+  document.getElementById('evCharts').innerHTML = EV_METRICS.map(m => `
+    <div class="chart-container fade-in" id="evCard_${m.key}">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">${m.title}</div>
+          <div class="chart-subtitle">${m.sub}</div>
+        </div>
+        <div class="legend-row" id="evLegend_${m.key}"></div>
+        <div class="chart-actions">
+          <button class="btn-tiff" id="tiffBtnEv_${m.key}" onclick="downloadChartAsTiff('evCard_${m.key}','EV_${m.key}','tiffBtnEv_${m.key}')">⬇ 下載 TIFF</button>
+        </div>
+      </div>
+      <canvas id="evCanvas_${m.key}" height="100"></canvas>
+    </div>`).join('');
+})();
+
+function initEV() {
+  const sel = document.getElementById('evDateSelect');
+  const dates = [...new Set(E.data.map(r => r.ts.slice(0,10)))].sort();
+  if (!dates.length) { sel.innerHTML = ''; E.rows = []; renderEVAll(); return; }
+
+  const prevDate = sel.value;
+  const wasLast  = E.rows.length && E.idx >= E.rows.length - 1;   // 原本停在最新一筆 → 新資料進來時跟著走
+  sel.innerHTML = dates.map(d => `<option value="${d}">${d}</option>`).join('');
+  sel.value = dates.includes(prevDate) ? prevDate : dates.at(-1);
+  sel.onchange = () => { applyEVFilter(true); };
+
+  const keepIdx = E.idx;
+  applyEVFilter(false);
+  E.idx = (wasLast || !prevDate) ? E.rows.length - 1 : Math.min(keepIdx, E.rows.length - 1);
+  renderEVAll();
+}
+
+function applyEVFilter(resetToLast) {
+  const v = document.getElementById('evDateSelect').value;
+  E.rows = E.data.filter(r => r.ts.slice(0,10) === v);
+  if (resetToLast) { E.idx = Math.max(0, E.rows.length - 1); renderEVAll(); }
+}
+
+function evSetIdx(i) {
+  if (!E.rows.length) return;
+  E.idx = Math.max(0, Math.min(E.rows.length - 1, i));
+  renderEVCards(); renderEVProgress(); renderEVCharts();
+}
+
+document.getElementById('evPrev').onclick   = () => evSetIdx(E.idx - 1);
+document.getElementById('evNext').onclick   = () => evSetIdx(E.idx + 1);
+document.getElementById('evSlider').oninput = e  => evSetIdx(+e.target.value);
+
+function renderEVAll() {
+  renderEVStats(); renderEVCards(); renderEVProgress(); renderEVCharts(); renderEVDesc();
+}
+
+function renderEVProgress() {
+  const sl = document.getElementById('evSlider');
+  sl.max = Math.max(0, E.rows.length - 1);
+  sl.value = E.idx;
+  document.getElementById('evProgressText').textContent =
+    E.rows.length ? `${E.idx + 1} / ${E.rows.length}　${E.rows[E.idx].ts.slice(11,19)}` : '0 / 0';
+}
+
+function renderEVStats() {
+  const rows = E.rows;
+  document.getElementById('eStat1').textContent = rows.length || '--';
+  if (!rows.length) {
+    ['eStat2','eStat3','eStat4'].forEach(id => document.getElementById(id).textContent = '--');
+    return;
+  }
+  const socs = [], temps = [];
+  rows.forEach(r => Object.values(r.data).forEach(c => {
+    const s = num(c.soc), t = num(c.max_temp_c);
+    if (s !== null) socs.push(s);
+    if (t !== null) temps.push(t);
+  }));
+  document.getElementById('eStat2').textContent = socs.length  ? (socs.reduce((a,b)=>a+b,0)/socs.length).toFixed(1) + ' %' : '--';
+  document.getElementById('eStat3').textContent = temps.length ? Math.max(...temps).toFixed(1) + ' °C' : '--';
+  document.getElementById('eStat4').textContent = rows[rows.length-1].ts.replace('T',' ').slice(0,19);
+}
+
+function renderEVCards() {
+  const box = document.getElementById('evCards');
+  const r = E.rows[E.idx];
+  if (!r) { box.innerHTML = '<div class="ev-desc">所選日期沒有 EV 充電樁資料</div>'; return; }
+
+  const keys = E.chargers.filter(k => r.data[k] || r.settings[k]);
+  box.innerHTML = keys.map(k => {
+    const d = r.data[k] || {}, s = r.settings[k] || {};
+    const st = s.battery_state || '--';
+    const stCls = st.includes('充') && !st.includes('放') ? 'charging' : st.includes('放') ? 'discharging' : 'idle';
+    const outOn = s.output_on === undefined ? '--' : (+s.output_on ? '開' : '關');
+    const extra = [];
+    if (s.output_current_set_a !== undefined) extra.push(`<div>輸出電流設定<b>${fmt(num(s.output_current_set_a),1,' A')}</b></div>`);
+    if (s.output_voltage_set_v !== undefined) extra.push(`<div>輸出電壓設定<b>${fmt(num(s.output_voltage_set_v),1,' V')}</b></div>`);
+    return `
+    <div class="ev-card" style="border-top-color:${evColor(k)}">
+      <div class="ev-card-head">
+        <div>
+          <div class="ev-card-name">${esc(d.name || k)}</div>
+          <div class="ev-card-key">${esc(k)}</div>
+        </div>
+        <span class="ev-state ${stCls}">${esc(st)}</span>
+      </div>
+      <div class="ev-kv">
+        <div>SOC<b>${fmt(num(d.soc),1,' %')}</b></div>
+        <div>SOH<b>${fmt(num(d.soh),1,' %')}</b></div>
+        <div>電壓<b>${fmt(num(d.voltage_v),1,' V')}</b></div>
+        <div>電流<b>${fmt(num(d.current_a),2,' A')}</b></div>
+        <div>最高溫<b>${fmt(num(d.max_temp_c),1,' °C')}</b></div>
+        <div>輸出開關<b>${outOn}</b></div>
+        <div class="wide">電源供應器模式<b>${esc(s.mode || '--')}</b></div>
+        <div>回灌電流設定<b>${fmt(num(s.reverse_current_set_a),1,' A')}</b></div>
+        <div>回灌電壓下限<b>${fmt(num(s.reverse_voltage_set_v),1,' V')}</b></div>
+        ${extra.join('')}
+      </div>
+    </div>`;
+  }).join('') + `
+    <div class="ev-card" style="border-top-color:#95a5a6">
+      <div class="ev-card-head"><div class="ev-card-name">紀錄資訊</div></div>
+      <div class="ev-kv">
+        <div class="wide">紀錄代號<b>${esc(r.id)}</b></div>
+        <div class="wide">事件時間<b>${esc(r.ts)}</b></div>
+        <div>裝置<b>${esc(r.device || '--')}</b></div>
+        <div>來源<b>${esc(r.source || '--')}</b></div>
+      </div>
+    </div>`;
+}
+
+function renderEVDesc() {
+  const r = E.data.at(-1);
+  const body = document.getElementById('evDescBody');
+  if (!r) { body.innerHTML = ''; return; }
+  const part = (title, obj) => Object.keys(obj).length
+    ? `<dt>${title}</dt>` + Object.entries(obj).map(([k,v]) => `<dd><code>${esc(k)}</code>：${esc(v)}</dd>`).join('')
+    : '';
+  body.innerHTML = part('資料欄位（data）', r.fd) + part('設定欄位（charger_settings）', r.sd);
+}
+
+function destroyEV() {
+  Object.keys(E.charts).forEach(k => { E.charts[k].destroy(); delete E.charts[k]; });
+}
+
+function renderEVCharts() {
+  destroyEV();
+  if (E.view !== 'ev' || !E.rows.length) return;   // 隱藏中不畫，切換分頁時再畫
+  const rows = E.rows;
+  const labels = rows.map(r => r.ts.slice(11,19));
+  const keys = E.chargers.filter(k => rows.some(r => r.data[k]));
+  const selRad = rows.map((_, i) => i === E.idx ? 6 : 0);
+
+  EV_METRICS.forEach(m => {
+    const canvas = document.getElementById('evCanvas_' + m.key);
+    if (!canvas) return;
+    const datasets = keys.map(k => ({
+      label: (rows.find(r => r.data[k] && r.data[k].name)?.data[k].name) || k,
+      data: rows.map(r => r.data[k] ? num(r.data[k][m.key]) : null),
+      borderColor: evColor(k), backgroundColor: evColor(k),
+      borderWidth: 2, pointRadius: selRad, pointHoverRadius: 6, fill: false, spanGaps: true, tension: 0,
+    }));
+    document.getElementById('evLegend_' + m.key).innerHTML =
+      datasets.map((d, i) => `<div class="legend-item"><span class="legend-dot" style="background:${evColor(keys[i])}"></span>${esc(d.label)}（${esc(keys[i])}）</div>`).join('');
+
+    const yScale = { ticks:{font:{size:TK}}, title:{display:true,text:m.unit,font:{size:TK+1}} };
+    if (m.min !== undefined) yScale.min = m.min;
+    if (m.max !== undefined) yScale.max = m.max;
+    if (m.zero) yScale.grid = { color: ctx => ctx.tick.value === 0 ? '#5a6c7d88' : '#e9ecef' };
+
+    E.charts[m.key] = new Chart(canvas, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        ...COMMON,
+        plugins: { ...COMMON.plugins, legend: { display: false } },
+        scales: { x: { ticks:{font:{size:TK}, maxTicksLimit: 12} }, y: yScale },
+        onClick: (e, els) => { if (els.length) evSetIdx(els[0].index); },
+      }
+    });
+  });
+}
+
+window.resetZoom = () => {
+  ['c1','c2','c3'].forEach(k => { if (S.charts[k]) S.charts[k].resetZoom(); });
+  Object.keys(E.charts).forEach(k => E.charts[k].resetZoom());
+};
 </script>
 </body>
 </html>
