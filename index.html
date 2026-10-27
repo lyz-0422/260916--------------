@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ESS 儲能 + EV 充電樁監控</title>
+<title>ESS 儲能 + EV 充電樁 + PV 太陽光電監控</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
@@ -23,6 +23,7 @@ body::after { bottom: -150px; left: -150px; width: 500px; height: 500px; backgro
 
 .header { background: white; padding: 30px 40px; border-radius: 20px; box-shadow: 0 2px 20px rgba(0,0,0,0.06); margin-bottom: 30px; border-left: 4px solid #7a8ba0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; }
 .header.ev { border-left-color: #00bcd4; }
+.header.sol { border-left-color: #f39c12; }
 .header h2 { margin: 0 0 8px 0; color: #2c3e50; font-size: 36px; font-weight: 600; font-family: 'Noto Serif TC', serif; }
 .header-subtitle { font-size: 18px; color: #95a5a6; font-weight: 300; }
 
@@ -212,6 +213,7 @@ canvas { max-width: 100%; touch-action: pan-y; }
   <div class="view-tabs no-export">
     <button class="view-tab active" id="tabESS" onclick="setView('ess')">🔋 ESS 儲能系統</button>
     <button class="view-tab" id="tabEV" onclick="setView('ev')">🔌 EV 充電樁</button>
+    <button class="view-tab" id="tabSolar" onclick="setView('solar')">☀️ PV 太陽光電</button>
   </div>
 
   <div class="debug-panel fade-in" id="debugPanel">
@@ -427,11 +429,57 @@ canvas { max-width: 100%; touch-action: pan-y; }
   </details>
   </div><!-- /viewEV -->
 
+  <!-- ═══════════════════════════════════════
+       太陽能（新增，資料來源：/solar_data_from_cycu，2026/6 起）
+       ═══════════════════════════════════════ -->
+  <div id="viewSolar" class="hidden">
+  <div id="solExportArea">
+
+    <div class="header sol fade-in">
+      <div>
+        <h2>PV 太陽光電監控儀表板</h2>
+        <div class="header-subtitle" id="solLastUpdate">正在連接 Firebase...</div>
+        <div class="header-subtitle" id="solOnline" style="margin-top:6px"></div>
+        <div class="header-subtitle" style="font-size:14px;margin-top:4px">資料來源：solar_data_from_cycu（僅載入 2026 年 6 月起的資料）</div>
+      </div>
+      <button class="btn-tiff btn-tiff-full no-export" id="tiffBtnSolFull" onclick="downloadChartAsTiff('solExportArea','PV_儀表板_整頁','tiffBtnSolFull')">📸 下載整頁 TIFF</button>
+    </div>
+
+    <div class="timeline-nav fade-in no-export">
+      <div class="date-group">
+        <span class="date-icon">📅</span>
+        <label>日期</label>
+        <select id="solDateSelect"></select>
+      </div>
+      <div class="nav-controls">
+        <button id="solPrev">← 上一筆</button>
+        <button id="solNext">下一筆 →</button>
+        <div class="progress-indicator">
+          <input type="range" id="solSlider" class="ev-slider" min="0" max="0" value="0">
+          <div id="solProgressText" class="progress-text">0 / 0</div>
+        </div>
+      </div>
+      <button onclick="resetZoom()" class="btn-primary">重置視圖</button>
+    </div>
+
+    <div class="stats-grid fade-in">
+      <div class="stat-card"><div class="stat-label">當日資料筆數</div><div id="solStat1" class="stat-value">--</div></div>
+      <div class="stat-card"><div class="stat-label">輻射值峰值</div><div id="solStat2" class="stat-value">--</div></div>
+      <div class="stat-card"><div class="stat-label">太陽能電流峰值</div><div id="solStat3" class="stat-value">--</div></div>
+      <div class="stat-card"><div class="stat-label">電池充電功率峰值</div><div id="solStat4" class="stat-value">--</div></div>
+    </div>
+
+    <div class="ev-grid fade-in" id="solCards"></div>
+
+    <div id="solCharts"></div>
+  </div>
+  </div><!-- /viewSolar -->
+
 </div>
 
 <script type="module">
 import { initializeApp }      from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app.js";
-import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-database.js";
+import { getDatabase, ref, onValue, set, query, orderByKey, startAt } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-database.js";
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-app-check.js";
 
 const DEBUG = new URLSearchParams(location.search).get('debug') === '1';
@@ -453,6 +501,8 @@ const firebaseConfig = {
 const S = { data:[], filtered:[], agg:[], idx:0, mode:'day', sourceFilter:'all', charts:{} };
 // ★ EV 充電樁狀態：data = 全部紀錄、rows = 目前日期的紀錄、idx = 目前選取筆、view = 目前分頁
 const E = { data:[], rows:[], idx:0, charts:{}, view:'ess', chargers:[] };
+
+const Sol = { data:[], rows:[], idx:0, charts:{} };
 
 const HISTORICAL_CUTOFF_DATE = '2026-08-31';
 
@@ -486,13 +536,14 @@ function log(msg, type='info') {
 // ══════════════════════════════════════════
 window.setView = (v) => {
   E.view = v;
-  document.getElementById('viewESS').classList.toggle('hidden', v !== 'ess');
-  document.getElementById('viewEV').classList.toggle('hidden',  v !== 'ev');
-  document.getElementById('tabESS').classList.toggle('active', v === 'ess');
-  document.getElementById('tabEV').classList.toggle('active',  v === 'ev');
+  [['ess','viewESS','tabESS'],['ev','viewEV','tabEV'],['solar','viewSolar','tabSolar']].forEach(([n,vid,tid]) => {
+    document.getElementById(vid).classList.toggle('hidden', v !== n);
+    document.getElementById(tid).classList.toggle('active', v === n);
+  });
   // 隱藏中的 canvas 尺寸為 0，切換後重畫才會正確
   if (v === 'ev' && E.rows.length) renderEVCharts();
   if (v === 'ess' && S.filtered.length) renderCharts();
+  if (v === 'solar' && Sol.rows.length) renderSolCharts();
 };
 
 // ══════════════════════════════════════════
@@ -1076,6 +1127,7 @@ MQ_MOBILE.addEventListener('change', e => {
   if (e.matches) COMMON.aspectRatio = 1.4; else delete COMMON.aspectRatio;
   if (S.filtered && S.filtered.length) renderCharts();
   if (E.rows.length) renderEVCharts();
+  if (Sol.rows.length) renderSolCharts();
 });
 
 function destroyAll(){
@@ -1358,9 +1410,203 @@ function renderEVCharts() {
   });
 }
 
+// ══════════════════════════════════════════════════════════════
+// ★★★ PV 太陽光電：資料處理 + 畫面 + 圖表 ★★★
+//   節點：/solar_data_from_cycu/{YYYY-MM-DD_HH-MM-SS}/{Radiation value, Solar voltage, ...}
+//   只用 orderByKey + startAt 向伺服器要 2026-06-01 以後的資料（不會把舊資料整包下載）。
+//   欄位名稱有空格、大小寫不一致（例如 "solar current"、"battery voltage" 是小寫），
+//   所以比對時一律轉小寫；讀不到的欄位直接是 null，不會被當成 0。
+// ══════════════════════════════════════════════════════════════
+const SOL_START_KEY = '2026-06-01';
+
+const SOL_FIELDS = {
+  rad:'Radiation value',          // 1. 輻射值
+  sv:'Solar voltage',             // 2. 太陽能電壓
+  sc:'Solar current',             // 3. 太陽能電流
+  bcp:'Battery charging power',   // 4. 電池充電功率
+  bdp:'Battery discharge power',  // 5. 電池放電功率
+};
+
+// 卡片分組：[欄位代號, 中文名, 單位, 小數位]（功率、輻射值在欄位表沒標單位，所以不加單位）
+const SOL_GROUPS = [
+  { title:'☀️ PV 太陽光電', color:'#f39c12', items:[
+    ['rad','輻射值','',0], ['sv','太陽能電壓',' V',1], ['sc','太陽能電流',' A',2] ] },
+  { title:'🔋 電池功率', color:'#27ae60', items:[
+    ['bcp','電池充電功率','',2], ['bdp','電池放電功率','',2] ] },
+];
+
+const SOL_CHARTS = [
+  { id:'rad', title:'輻射值', sub:'輻射值（欄位表未標示單位）', y:'輻射值',
+    series:[ {f:'rad',label:'輻射值',color:'#f39c12',axis:'y'} ] },
+  { id:'pv',  title:'太陽能電壓 + 電流', sub:'左軸：電壓 (V)　右軸：電流 (A)', y:'電壓 (V)', y1:'電流 (A)',
+    series:[ {f:'sv',label:'太陽能電壓',color:'#e67e22',axis:'y'}, {f:'sc',label:'太陽能電流',color:'#2980b9',axis:'y1'} ] },
+  { id:'pow', title:'電池充電 / 放電功率', sub:'欄位表未標示單位', y:'功率',
+    series:[ {f:'bcp',label:'電池充電功率',color:'#27ae60',axis:'y'}, {f:'bdp',label:'電池放電功率',color:'#e84393',axis:'y'} ] },
+];
+
+(function buildSolChartCards() {
+  document.getElementById('solCharts').innerHTML = SOL_CHARTS.map(c => `
+    <div class="chart-container fade-in" id="solCard_${c.id}">
+      <div class="chart-header">
+        <div>
+          <div class="chart-title">${c.title}</div>
+          <div class="chart-subtitle">${c.sub}</div>
+        </div>
+        <div class="legend-row" id="solLegend_${c.id}"></div>
+        <div class="chart-actions">
+          <button class="btn-tiff" id="tiffBtnSol_${c.id}" onclick="downloadChartAsTiff('solCard_${c.id}','PV_${c.id}','tiffBtnSol_${c.id}')">⬇ 下載 TIFF</button>
+        </div>
+      </div>
+      <canvas id="solCanvas_${c.id}" height="100"></canvas>
+    </div>`).join('');
+})();
+
+onValue(query(ref(db, '/solar_data_from_cycu'), orderByKey(), startAt(SOL_START_KEY)), snap => {
+  log('📡 收到 PV 數據更新');
+  const raw = snap.val();
+  if (!raw) {
+    log('❌ Firebase 無 PV 太陽光電數據（/solar_data_from_cycu，2026-06 起）', 'err');
+    document.getElementById('solLastUpdate').textContent = '⚠ 尚無 PV 太陽光電資料';
+    return;
+  }
+  Sol.data = [];
+  Object.keys(raw).forEach(k => {
+    const r = raw[k];
+    const m = /^(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})$/.exec(k);   // 節點名稱 = 資料時間
+    if (!m || !r || typeof r !== 'object') return;
+    const low = {};
+    Object.keys(r).forEach(n => { low[n.toLowerCase()] = r[n]; });
+    const v = {};
+    Object.entries(SOL_FIELDS).forEach(([a, n]) => { v[a] = num(low[n.toLowerCase()]); });
+    Sol.data.push({ key:k, date:m[1], time:`${m[2]}:${m[3]}:${m[4]}`, ts:`${m[1]}T${m[2]}:${m[3]}:${m[4]}+08:00`, v });
+  });
+  Sol.data.sort((a,b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+  log(`✅ PV 解析完成：${Sol.data.length} 筆`, 'ok');
+  document.getElementById('solLastUpdate').textContent =
+    `✅ 更新時間: ${new Date().toLocaleString('zh-TW')} | 數據筆數: ${Sol.data.length}`;
+  updateSolOnline();
+  initSol();
+}, err => { log(`❌ PV 連接錯誤: ${err.message}（請確認 Realtime Database 規則允許讀取 /solar_data_from_cycu）`, 'err'); document.getElementById('debugPanel').style.display = 'block'; });
+
+function updateSolOnline() {
+  const el = document.getElementById('solOnline');
+  const last = Sol.data.at(-1);
+  if (!el) return;
+  if (!last) { el.textContent = ''; return; }
+  const mins = (Date.now() - Date.parse(last.ts)) / 60000;
+  const when = `${last.date} ${last.time}`;
+  // 更新頻率未知，先以 30 分鐘沒新資料視為離線，可自行調整
+  el.textContent = mins > 30 ? `⚪ 離線／資料已停止更新（最後資料：${when}）` : `🟢 線上（最後資料：${when}）`;
+}
+setInterval(updateSolOnline, 60000);
+
+function initSol() {
+  const sel = document.getElementById('solDateSelect');
+  const dates = [...new Set(Sol.data.map(r => r.date))].sort();
+  if (!dates.length) { sel.innerHTML = ''; Sol.rows = []; renderSolAll(); return; }
+  const prevDate = sel.value;
+  const wasLast  = Sol.rows.length && Sol.idx >= Sol.rows.length - 1;
+  sel.innerHTML = dates.map(d => `<option value="${d}">${d}</option>`).join('');
+  sel.value = dates.includes(prevDate) ? prevDate : dates.at(-1);
+  sel.onchange = () => { Sol.rows = Sol.data.filter(r => r.date === sel.value); Sol.idx = Math.max(0, Sol.rows.length - 1); renderSolAll(); };
+  const keepIdx = Sol.idx;
+  Sol.rows = Sol.data.filter(r => r.date === sel.value);
+  Sol.idx = (wasLast || !prevDate) ? Sol.rows.length - 1 : Math.min(keepIdx, Sol.rows.length - 1);
+  renderSolAll();
+}
+
+function solSetIdx(i) {
+  if (!Sol.rows.length) return;
+  Sol.idx = Math.max(0, Math.min(Sol.rows.length - 1, i));
+  renderSolCards(); renderSolProgress(); renderSolCharts();
+}
+document.getElementById('solPrev').onclick   = () => solSetIdx(Sol.idx - 1);
+document.getElementById('solNext').onclick   = () => solSetIdx(Sol.idx + 1);
+document.getElementById('solSlider').oninput = e  => solSetIdx(+e.target.value);
+
+function renderSolAll() { renderSolStats(); renderSolCards(); renderSolProgress(); renderSolCharts(); }
+
+function renderSolProgress() {
+  const sl = document.getElementById('solSlider');
+  sl.max = Math.max(0, Sol.rows.length - 1);
+  sl.value = Sol.idx;
+  document.getElementById('solProgressText').textContent =
+    Sol.rows.length ? `${Sol.idx + 1} / ${Sol.rows.length}　${Sol.rows[Sol.idx].time}` : '0 / 0';
+}
+
+function renderSolStats() {
+  const rows = Sol.rows;
+  document.getElementById('solStat1').textContent = rows.length || '--';
+  const mx = arr => { const a = arr.filter(x => x !== null); return a.length ? Math.max(...a) : null; };
+  document.getElementById('solStat2').textContent = rows.length ? fmt(mx(rows.map(r => r.v.rad)), 0, '') : '--';
+  document.getElementById('solStat3').textContent = rows.length ? fmt(mx(rows.map(r => r.v.sc)), 2, ' A') : '--';
+  document.getElementById('solStat4').textContent = rows.length ? fmt(mx(rows.map(r => r.v.bcp)), 2, '') : '--';
+}
+
+function renderSolCards() {
+  const box = document.getElementById('solCards');
+  const r = Sol.rows[Sol.idx];
+  if (!r) { box.innerHTML = '<div class="ev-desc">所選日期沒有 PV 太陽光電資料</div>'; return; }
+  const groups = SOL_GROUPS.map(g => `
+    <div class="ev-card" style="border-top-color:${g.color}">
+      <div class="ev-card-head"><div class="ev-card-name">${g.title}</div></div>
+      <div class="ev-kv">${g.items.map(([f,l,u,d]) => `<div>${l}<b>${fmt(r.v[f], d, u)}</b></div>`).join('')}</div>
+    </div>`).join('');
+  const info = `
+    <div class="ev-card" style="border-top-color:#95a5a6">
+      <div class="ev-card-head"><div class="ev-card-name">紀錄資訊</div></div>
+      <div class="ev-kv"><div class="wide">資料時間（台灣時間）<b>${esc(r.date + ' ' + r.time)}</b></div></div>
+    </div>`;
+  box.innerHTML = groups + info;
+}
+
+function destroySol() {
+  Object.keys(Sol.charts).forEach(k => { Sol.charts[k].destroy(); delete Sol.charts[k]; });
+}
+
+function renderSolCharts() {
+  destroySol();
+  if (E.view !== 'solar' || !Sol.rows.length) return;   // 隱藏中不畫，切換分頁時再畫
+  const rows = Sol.rows;
+  const labels = rows.map(r => r.time);
+  const selRad = rows.map((_, i) => i === Sol.idx ? 6 : 0);
+
+  SOL_CHARTS.forEach(c => {
+    const canvas = document.getElementById('solCanvas_' + c.id);
+    if (!canvas) return;
+    const datasets = c.series.map(s => ({
+      label: s.label, yAxisID: s.axis, data: rows.map(r => r.v[s.f]),
+      borderColor: s.color, backgroundColor: s.color, borderWidth: 2,
+      pointRadius: selRad, pointHoverRadius: 6, fill: false, spanGaps: true, tension: 0,
+    }));
+    document.getElementById('solLegend_' + c.id).innerHTML =
+      c.series.map(s => `<div class="legend-item"><span class="legend-dot" style="background:${s.color}"></span>${esc(s.label)}</div>`).join('');
+
+    const zeroGrid = ctx => ctx.tick.value === 0 ? '#5a6c7d88' : '#e9ecef';
+    const scales = {
+      x: { ticks:{ font:{size:TK}, maxTicksLimit:12 } },
+      y: { ticks:{ font:{size:TK} }, title:{ display:true, text:c.y, font:{size:TK+1} } },
+    };
+    if (c.y1) scales.y1 = { ticks:{ font:{size:TK} }, position:'right', grid:{ drawOnChartArea:false, ...(c.zero1 ? { color: zeroGrid } : {}) },
+                            title:{ display:true, text:c.y1, font:{size:TK+1} } };
+
+    Sol.charts[c.id] = new Chart(canvas, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        ...COMMON,
+        plugins: { ...COMMON.plugins, legend: { display: false } },
+        scales,
+        onClick: (e, els) => { if (els.length) solSetIdx(els[0].index); },
+      }
+    });
+  });
+}
+
 window.resetZoom = () => {
   ['c1','c2','c3'].forEach(k => { if (S.charts[k]) S.charts[k].resetZoom(); });
   Object.keys(E.charts).forEach(k => E.charts[k].resetZoom());
+  Object.keys(Sol.charts).forEach(k => Sol.charts[k].resetZoom());
 };
 </script>
 </body>
