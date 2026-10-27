@@ -1470,6 +1470,7 @@ onValue(query(ref(db, '/solar_data_from_cycu'), orderByKey(), startAt(SOL_START_
     return;
   }
   Sol.data = [];
+  let skipped = 0, skipEx = null;
   Object.keys(raw).forEach(k => {
     const r = raw[k];
     const m = /^(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})$/.exec(k);   // 節點名稱 = 資料時間
@@ -1478,10 +1479,13 @@ onValue(query(ref(db, '/solar_data_from_cycu'), orderByKey(), startAt(SOL_START_
     Object.keys(r).forEach(n => { low[n.toLowerCase()] = r[n]; });
     const v = {};
     Object.entries(SOL_FIELDS).forEach(([a, n]) => { v[a] = num(low[n.toLowerCase()]); });
+    // 節點存在但 5 個要的欄位全都沒有數值 → 不算有資料，略過（否則日期和筆數會被空節點灌水）
+    if (Object.values(v).every(x => x === null)) { skipped++; if (!skipEx) skipEx = { k, fields: Object.keys(r) }; return; }
     Sol.data.push({ key:k, date:m[1], time:`${m[2]}:${m[3]}:${m[4]}`, ts:`${m[1]}T${m[2]}:${m[3]}:${m[4]}+08:00`, v });
   });
   Sol.data.sort((a,b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
-  log(`✅ PV 解析完成：${Sol.data.length} 筆`, 'ok');
+  log(`✅ PV 解析完成：${Sol.data.length} 筆有效資料`, 'ok');
+  if (skipped) log(`⚠ PV 略過 ${skipped} 個沒有指定欄位數值的節點，例：${skipEx.k}，其欄位：${skipEx.fields.join(', ') || '（空）'}`, 'err');
   document.getElementById('solLastUpdate').textContent =
     `✅ 更新時間: ${new Date().toLocaleString('zh-TW')} | 數據筆數: ${Sol.data.length}`;
   updateSolOnline();
