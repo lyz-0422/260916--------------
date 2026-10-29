@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ESS 儲能 + EV 充電樁 + PV 太陽光電監控</title>
+<title>ESS 儲能 + EV 電動車電池 + PV 太陽光電監控</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
@@ -116,7 +116,7 @@ select:focus { outline: none; border-color: #7a8ba0; box-shadow: 0 0 0 3px rgba(
 .trend-change { font-size: 17px; margin-top: 8px; }
 .trend-up { color: #27ae60; } .trend-down { color: #e74c3c; } .trend-flat { color: #95a5a6; }
 
-/* ── EV 充電樁專用 ── */
+/* ── 電動車電池專用 ── */
 .ev-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 20px; }
 .ev-card { background: white; padding: 22px 24px; border-radius: 16px; box-shadow: 0 2px 15px rgba(0,0,0,0.05); border-top: 4px solid #7a8ba0; }
 .ev-card-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
@@ -212,7 +212,7 @@ canvas { max-width: 100%; touch-action: pan-y; }
   <!-- ═══════════ 分頁切換 ═══════════ -->
   <div class="view-tabs no-export">
     <button class="view-tab active" id="tabESS" onclick="setView('ess')">🔋 ESS 儲能系統</button>
-    <button class="view-tab" id="tabEV" onclick="setView('ev')">🔌 EV 充電樁</button>
+    <button class="view-tab" id="tabEV" onclick="setView('ev')">🚗 EV 電動車電池</button>
     <button class="view-tab" id="tabSolar" onclick="setView('solar')">☀️ PV 太陽光電</button>
   </div>
 
@@ -379,14 +379,14 @@ canvas { max-width: 100%; touch-action: pan-y; }
   </div><!-- /viewESS -->
 
   <!-- ═══════════════════════════════════════
-       EV 充電樁（新增，資料來源：/EV_charger_data）
+       電動車電池（新增，資料來源：/EV_charger_data）
        ═══════════════════════════════════════ -->
   <div id="viewEV" class="hidden">
   <div id="evExportArea">
 
     <div class="header ev fade-in">
       <div>
-        <h2>EV 充電樁監控儀表板</h2>
+        <h2>EV 電動車電池監控儀表板</h2>
         <div class="header-subtitle" id="evLastUpdate">正在連接 Firebase...</div>
         <div class="header-subtitle" id="evOnline" style="margin-top:6px"></div>
         <div class="header-subtitle" style="font-size:14px;margin-top:4px">資料僅在做實驗時約每 10 分鐘更新一次；沒做實驗時不會更新</div>
@@ -499,7 +499,7 @@ const firebaseConfig = {
 };
 
 const S = { data:[], filtered:[], agg:[], idx:0, mode:'day', sourceFilter:'all', charts:{} };
-// ★ EV 充電樁狀態：data = 全部紀錄、rows = 目前日期的紀錄、idx = 目前選取筆、view = 目前分頁
+// ★ 電動車電池狀態：data = 全部紀錄、rows = 目前日期的紀錄、idx = 目前選取筆、view = 目前分頁
 const E = { data:[], rows:[], idx:0, charts:{}, view:'ess', chargers:[] };
 
 const Sol = { data:[], rows:[], idx:0, charts:{} };
@@ -846,7 +846,7 @@ onValue(ref(db, '/ems_data'), snap => {
 }, err => { log(`❌ ESS 連接錯誤: ${err.message}`, 'err'); });
 
 // ══════════════════════════════════════════
-// ★ EV 充電樁資料監聽：/EV_charger_data
+// ★ 電動車電池資料監聽：/EV_charger_data
 //   每筆紀錄 key 形如 charger_YYYYMMDD_HHMMSS，內含：
 //   data{charger_N:{current_a,max_temp_c,name,soc,soh,voltage_v}}、
 //   charger_settings{charger_N:{battery_state,mode,output_on,reverse_*_set_*,output_*_set_*}}、
@@ -854,11 +854,11 @@ onValue(ref(db, '/ems_data'), snap => {
 //   之後新匯入的紀錄會即時出現（onValue 持續監聽）。
 // ══════════════════════════════════════════
 onValue(ref(db, '/EV_charger_data'), snap => {
-  log('📡 收到 EV 充電樁數據更新');
+  log('📡 收到 EV 電動車電池數據更新');
   const raw = snap.val();
   if (!raw) {
     log('❌ Firebase 無 EV 數據（/EV_charger_data）', 'err');
-    document.getElementById('evLastUpdate').textContent = '⚠ 尚無 EV 充電樁資料';
+    document.getElementById('evLastUpdate').textContent = '⚠ 尚無 EV 電動車電池資料';
     return;
   }
   E.data = [];
@@ -882,7 +882,7 @@ onValue(ref(db, '/EV_charger_data'), snap => {
   E.data.forEach(r => { Object.keys(r.data).forEach(c => set_.add(c)); Object.keys(r.settings).forEach(c => set_.add(c)); });
   E.chargers = [...set_].sort();
   updateEVOnline();
-  log(`✅ EV 解析完成：${E.data.length} 筆，${E.chargers.length} 個充電樁`, 'ok');
+  log(`✅ EV 解析完成：${E.data.length} 筆，${E.chargers.length} 個電池櫃`, 'ok');
   document.getElementById('evLastUpdate').textContent =
     `✅ 更新時間: ${new Date().toLocaleString('zh-TW')} | 數據筆數: ${E.data.length}`;
   initEV();
@@ -1198,7 +1198,7 @@ function renderAgg() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// ★★★ EV 充電樁：資料處理 + 畫面 + 圖表 ★★★
+// ★★★ 電動車電池：資料處理 + 畫面 + 圖表 ★★★
 // ══════════════════════════════════════════════════════════════
 const EV_COLORS = ['#00bcd4', '#e67e22', '#8e44ad', '#27ae60', '#e84393', '#2d3436'];
 const CHARGER_NAMES = { charger_1:'動力輪組櫃', charger_2:'電子負載櫃', charger_3:'雙向直流負載櫃' };
@@ -1217,11 +1217,11 @@ const evColor = k => EV_COLORS[Math.max(0, E.chargers.indexOf(k)) % EV_COLORS.le
 
 // 要畫的圖：每個指標一張圖，每個充電樁一條線
 const EV_METRICS = [
-  { key:'soc',        title:'電量 SOC（%）',          sub:'各充電樁電池組電量（%）',                         unit:'%',  min:0, max:100 },
+  { key:'soc',        title:'電量 SOC（%）',          sub:'各櫃電池組電量（%）',                         unit:'%',  min:0, max:100 },
   { key:'current_a',  title:'電池組電流（A）',         sub:'正值＝充電、負值＝放電（0 線為分界）',        unit:'A',  zero:true },
-  { key:'voltage_v',  title:'電池組電壓（V）',         sub:'各充電樁電池組電壓（正常約 84–106 V）',                         unit:'V' },
-  { key:'max_temp_c', title:'電池組最高溫（°C）',      sub:'各充電樁電池組最高溫度',                     unit:'°C' },
-  { key:'soh',        title:'健康度 SOH（%）',         sub:'各充電樁電池組健康度（100＝全新）',                       unit:'%',  min:0, max:100 },
+  { key:'voltage_v',  title:'電池組電壓（V）',         sub:'各櫃電池組電壓（正常約 84–106 V）',                         unit:'V' },
+  { key:'max_temp_c', title:'電池組最高溫（°C）',      sub:'各櫃電池組最高溫度',                     unit:'°C' },
+  { key:'soh',        title:'健康度 SOH（%）',         sub:'各櫃電池組健康度（100＝全新）',                       unit:'%',  min:0, max:100 },
 ];
 
 const num = v => (v === undefined || v === null || v === '' || isNaN(+v)) ? null : +v;
@@ -1312,7 +1312,7 @@ function renderEVStats() {
 function renderEVCards() {
   const box = document.getElementById('evCards');
   const r = E.rows[E.idx];
-  if (!r) { box.innerHTML = '<div class="ev-desc">所選日期沒有 EV 充電樁資料</div>'; return; }
+  if (!r) { box.innerHTML = '<div class="ev-desc">所選日期沒有 EV 電動車電池資料</div>'; return; }
 
   const keys = E.chargers.filter(k => r.data[k] || r.settings[k]);
   box.innerHTML = keys.map(k => {
