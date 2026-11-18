@@ -1,0 +1,15 @@
+﻿模型,平均名次
+隨機森林,2.2
+最佳組合：LightGBM + XGBoost + 隨機森林［最大值］,3.12
+MLP 神經網路,4.28
+數位孿生,4.96
+LightGBM,5.22
+SVM（RBF）,5.26
+邏輯迴歸,5.92
+XGBoost,6.6
+自編碼器 AE,8.66
+馬氏距離（Elliptic）,9.44
+PCA 重建誤差,10.34
+LOF 局部離群因子,12.4
+One-Class SVM,12.82
+Isolation Forest,13.78

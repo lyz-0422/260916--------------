@@ -1,0 +1,77 @@
+======================================================================
+   訓練報告：超參數選擇與偵測結果
+   特徵模式: 含模擬電池診斷特徵（原始模式）
+======================================================================
+
+【一、二元異常檢測】
+資料切分：訓練 14439 / 驗證 3609 / 測試 7735 筆（時間順序切分）
+特徵選擇：k = 25（肘部法則）
+  選用特徵: soc, soh, cell_v_diff, self_discharge_rate, is_daytime, cell_v_diff_ma, cell_v_diff_std, cell_v_high_flag, self_dis_ma, self_dis_std, self_dis_high, soh_diff, soh_low_flag, soh_soc_interact, soc_change_rate, dv_dq_proxy, soc_diff, soc_diff2, soc_mean_4, soc_std_4, soc_range_4, soc_std_8, power_std_24, soc_power_interaction, soc_extreme
+
+1. 超參數（皆以驗證集 F1 選出）
+  IF   : {'n_estimators': 200, 'max_samples': 256, 'contamination': 0.08, 'max_features': 0.3}
+  RF   : {'n_estimators': 100, 'max_depth': 10, 'min_samples_split': 10, 'min_samples_leaf': 4}（+ SMOTE, class_weight=balanced）
+  XGB  : {'n_estimators': 150, 'max_depth': 4, 'learning_rate': 0.1, 'min_child_weight': 1}（subsample=0.85, colsample_bytree=0.8, scale_pos_weight=負/正樣本比）
+  LGBM : n_estimators=300, learning_rate=0.05, num_leaves=31, scale_pos_weight=負/正樣本比（固定參數）
+  數位孿生（只用正常資料訓練）:
+    - IF: n_estimators=200, max_samples=min(512,N)，只用正常資料
+    - AE: MLP 隱藏層 (34, 17, 34), max_iter=80, early_stopping
+    - PCA: 保留 95% 變異 → 26 個主成分
+    - SOC物理殘差: HistGradientBoostingRegressor(max_iter=200)，輸入 ess_power/前一刻ess_power/前一刻SOC/hour
+
+2. 新 Hybrid 組合方式（驗證集決定）
+  分數 = 0.80 × 孿生 + 0.20 × 監督集成(RF+XGB+LGBM)
+  加權分數門檻 = 0.840
+  孿生閘門 = 不開
+    候選 不開: 驗證 F1 = 0.9828
+    候選 0.0005: 驗證 F1 = 0.9772
+    候選 0.001: 驗證 F1 = 0.9735
+    候選 0.002: 驗證 F1 = 0.9662
+    候選 0.005: 驗證 F1 = 0.9538
+  權重搜尋前 5 名（驗證集）:
+ twin_weight  sup_weight  threshold     f1
+        0.80        0.20       0.84 0.9828
+        0.60        0.40       0.71 0.9827
+        0.65        0.35       0.75 0.9827
+        0.55        0.45       0.68 0.9827
+        0.75        0.25       0.81 0.9827
+
+3. 測試集偵測結果
+   Model  Accuracy  Precision  Recall     F1  Train (ms)
+      IF    0.8827     0.3175  0.4130 0.3590    287.8635
+      RF    0.9961     0.9933  0.9577 0.9752    564.5289
+     XGB    0.9963     0.9788  0.9740 0.9764    131.9830
+    LGBM    0.9972     0.9933  0.9707 0.9819    248.0266
+ IF(僅正常)    0.9178     0.3019  0.0260 0.0479         NaN
+      AE    0.9740     1.0000  0.6732 0.8047         NaN
+     PCA    0.9740     1.0000  0.6732 0.8047         NaN
+ SOC物理殘差    0.9343     0.9147  0.1919 0.3172         NaN
+    Twin    0.9850     0.9595  0.8472 0.8998   2344.6047
+Ensemble    0.9968     0.9933  0.9659 0.9794         NaN
+  Hybrid    0.9965     0.9757  0.9805 0.9781         NaN
+  Hybrid 混淆矩陣：TN=7105  FP=15  FN=12  TP=603
+
+【二、多分類異常診斷】
+特徵選擇：SelectKBest(mutual_info) k = 25
+1. 超參數
+  RF   : n_estimators=100, max_depth=10, min_samples_leaf=2, class_weight=balanced（固定）
+  XGB  : {'n_estimators': 200, 'max_depth': 6, 'learning_rate': 0.1, 'min_child_weight': 1}（驗證集 Macro F1 選出）
+  LGBM : n_estimators=300, learning_rate=0.05, class_weight=balanced（固定）
+  集成 : Soft Voting（RF+XGB+LGBM 機率平均）
+
+2. 模型選擇（依驗證集 Macro F1；測試集欄位僅供報告）
+                Model  Val F1 (Macro)  Test Accuracy  Test F1 (Macro)  Train Time (ms)
+         RandomForest          0.9499         0.9969           0.9845        1383.7528
+              XGBoost          0.9749         0.9969           0.9845        1547.8745
+             LightGBM          0.9761         0.9973           0.9865        1887.4729
+Ensemble(RF+XGB+LGBM)          0.9746         0.9974           0.9871        5178.3154
+  ✓ 選用: LightGBM（Accuracy=0.9973, Macro F1=0.9865）
+
+3. 各類別偵測結果（選用模型）
+  類別                     Precision    Recall        F1      筆數
+  normal                    0.9985    0.9986    0.9985    7120
+  cell_inconsistency        1.0000    1.0000    1.0000     197
+  internal_short            1.0000    1.0000    1.0000     217
+  soh_degradation           0.9500    0.9453    0.9476     201
+  macro avg                 0.9871    0.9860    0.9865    7735
+  weighted avg              0.9973    0.9973    0.9973    7735

@@ -1,0 +1,58 @@
+﻿特徵,處理,原因
+power_extreme,刪除,幾乎不變（同值佔 100.0%）
+before_load,保留,
+after_load,保留,
+ess_power,保留,
+soc,保留,
+hour,保留,
+day_of_week,保留,
+is_weekend,保留,
+is_peak_hour,保留,
+is_night,保留,
+is_daytime,保留,
+hour_sin,保留,
+hour_cos,保留,
+day_sin,保留,
+day_cos,保留,
+soc_change_rate,保留,
+dv_dq_proxy,保留,
+soc_diff,刪除,與 soc_change_rate 相關 +1.000
+soc_diff2,保留,
+power_diff,保留,
+power_diff2,保留,
+load_diff,保留,
+soc_mean_4,刪除,與 soc 相關 +0.974
+soc_std_4,保留,
+soc_range_4,刪除,與 soc_std_4 相關 +0.999
+power_mean_4,保留,
+power_std_4,保留,
+load_std_4,保留,
+soc_mean_8,保留,
+soc_std_8,保留,
+soc_range_8,刪除,與 soc_std_8 相關 +0.998
+power_mean_8,保留,
+power_std_8,保留,
+load_std_8,保留,
+soc_mean_12,刪除,與 soc_mean_8 相關 +0.970
+soc_std_12,保留,
+soc_range_12,刪除,與 soc_std_12 相關 +0.995
+power_mean_12,保留,
+power_std_12,保留,
+load_std_12,保留,
+soc_mean_24,保留,
+soc_std_24,保留,
+soc_range_24,刪除,與 soc_std_24 相關 +0.984
+power_mean_24,保留,
+power_std_24,保留,
+load_std_24,保留,
+power_to_load_ratio,刪除,與 ess_power 相關 +0.968
+soc_power_interaction,保留,
+load_reduction_rate,刪除,與 ess_power 相關 +0.968
+soc_extreme,保留,
+power_volatility,刪除,與 power_std_8 相關 +1.000
+soc_lag_1,刪除,與 soc 相關 +0.986
+power_lag_1,保留,
+soc_lag_2,刪除,與 soc_mean_8 相關 +0.973
+power_lag_2,保留,
+soc_lag_4,刪除,與 soc_mean_8 相關 +0.990
+power_lag_4,保留,

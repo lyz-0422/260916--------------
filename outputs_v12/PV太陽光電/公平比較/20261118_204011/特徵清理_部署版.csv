@@ -1,0 +1,36 @@
+﻿特徵,處理,原因
+Battery A1 temperature,保留,
+Battery A2 temperature,保留,
+Battery B1 temperature,保留,
+Battery B2 temperature,保留,
+Battery charging power,保留,
+Battery discharge operation,保留,
+Discharge current,刪除,與 Battery discharge operation 相關 +0.983
+Discharge power,刪除,與 Battery discharge operation 相關 +0.983
+Discharge voltage,刪除,與 Battery discharge operation 相關 +0.987
+Mains charging current,保留,
+Mains charging operation,保留,
+Mains charging power,刪除,與 Mains charging current 相關 +1.000
+Mains charging voltage,保留,
+Radiation value,保留,
+Solar charging operation,保留,
+Solar panel temperature,保留,
+Solar power,保留,
+Solar voltage,保留,
+battery current,刪除,與 Battery charging power 相關 +0.999
+battery voltage,保留,
+solar current,保留,
+hour_sin,保留,
+hour_cos,保留,
+bat_temp_mean,保留,
+bat_temp_max,保留,
+bat_temp_spread,保留,
+bat_current_abs,保留,
+Load discharge time_inc,保留,
+Mains charging time_inc,刪除,與 Load discharge time_inc 相關 +0.990
+Solar charging time_inc,刪除,與 Load discharge time_inc 相關 +0.982
+pv_ratio,保留,
+pv_ratio_rel,保留,
+pv_power_lag1,保留,
+pv_power_diff,保留,
+rad_diff,保留,

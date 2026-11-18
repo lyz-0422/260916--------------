@@ -9,7 +9,7 @@ from firebase_admin import credentials, db
 CRED = r"D:\260916數位孿生目前最終版計劃案代碼\essssimulation3-firebase-adminsdk-fbsvc-6b270aedbf.json"
 URL = "https://essssimulation3-default-rtdb.asia-southeast1.firebasedatabase.app/"
 NODE = "EV_charger_data"
-HIST = Path(r"d:\260916數位孿生目前最終版計劃案代碼\outputs_EV電動車\EV_history.csv")
+HIST = Path(r"d:\260916數位孿生目前最終版計劃案代碼\outputs_v13\EV電動車\EV_history.csv")
 LOG = HIST.parent / "執行紀錄" / "EV_logger_排程.log"
 
 
