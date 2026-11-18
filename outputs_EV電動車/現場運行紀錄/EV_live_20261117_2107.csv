@@ -1,0 +1,4 @@
+﻿poll_time,event_time,charger,name,status,score,anomaly_type,type_zh,soc,current_a,voltage_v,max_temp_c,dq_issues
+2026-11-17T21:07:00,2026-11-16T14:00:00,charger_1,動力輪組櫃,ACCUMULATING,,,,56,9.8,100.28,26,
+2026-11-17T21:07:00,2026-11-16T14:00:00,charger_2,電子負載櫃,ACCUMULATING,,,,66,9.86,100.56,26,
+2026-11-17T21:07:00,2026-11-16T14:00:00,charger_3,雙向直流負載櫃,ACCUMULATING,,,,59,-0.02,99.08,26,

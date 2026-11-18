@@ -1,0 +1,28 @@
+太陽光電｜research｜種子 42
+選用特徵 k=10：Battery B1 temperature, bat_temp_mean, bat_temp_max, bat_temp_spread, hotspot_delta_c, insulation_mohm, hotspot_high, insulation_low, hotspot_ma4, insulation_ma4
+RF {'n_estimators': 100, 'max_depth': 6, 'min_samples_split': 5, 'min_samples_leaf': 4}
+XGB {'n_estimators': 150, 'max_depth': 4, 'learning_rate': 0.05, 'min_child_weight': 1}
+IF {'n_estimators': 200, 'max_samples': 512, 'contamination': 0.08, 'max_features': 0.3}
+混合：孿生 0.00、閾值 0.380、閘門 不開（驗證 F1 0.9046）
+
+                        模型  Precision   Recall       F1  Accuracy  TP   FP  FN    訓練耗時(ms)
+     Isolation Forest（對照組）   0.134701 0.929231 0.235294  0.533508 302 1940  23  258.723736
+     Random Forest + SMOTE   1.000000 0.889231 0.941368  0.991445 289    0  36  140.413046
+XGBoost + scale_pos_weight   0.986207 0.880000 0.930081  0.989781 286    4  39   52.579165
+                  LightGBM   0.955782 0.864615 0.907916  0.986454 281   13  44  182.247639
+                     監督式集成   1.000000 0.864615 0.927393  0.989544 281    0  44         NaN
+                     孿生：IF   0.097087 0.030769 0.046729  0.903042  10   93 315         NaN
+                     孿生：AE   0.917460 0.889231 0.903125  0.985266 289   26  36         NaN
+                    孿生：PCA   0.945763 0.858462 0.900000  0.985266 279   16  46         NaN
+                 孿生：PV發電殘差   0.045455 0.003077 0.005764  0.918013   1   21 324         NaN
+                 孿生：電池溫度殘差   0.948454 0.283077 0.436019  0.943441  92    5 233         NaN
+                 孿生：電池電壓殘差   0.076923 0.009231 0.016484  0.914924   3   36 322         NaN
+                孿生：PV功率一致性   0.000000 0.000000 0.000000  0.922053   0    3 325         NaN
+                孿生：電池功率一致性   0.047619 0.003077 0.005780  0.918251   1   20 324         NaN
+                孿生：放電功率一致性   0.000000 0.000000 0.000000  0.921816   0    4 325         NaN
+                孿生：市電充電一致性   0.000000 0.000000 0.000000  0.922529   0    1 325         NaN
+                  數位孿生（合併）   0.878419 0.889231 0.883792  0.981939 289   40  36 2785.667419
+               Hybrid（本研究）   0.976027 0.876923 0.923825  0.988831 285    7  40         NaN
+
+Hybrid ROC-AUC 0.9332、PR-AUC 0.9072
+多分類：LightGBM，Accuracy 0.9886、Macro F1 0.7988

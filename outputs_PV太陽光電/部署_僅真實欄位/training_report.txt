@@ -1,0 +1,28 @@
+太陽光電｜deployment｜種子 42
+選用特徵 k=25：Battery A1 temperature, Battery A2 temperature, Battery B1 temperature, Battery B2 temperature, Battery charging power, Discharge current, Discharge power, Mains charging current, Mains charging operation, Solar charging operation, Solar panel temperature, Solar power, Solar voltage, battery current, battery voltage, solar current, hour_sin, hour_cos, bat_temp_mean, bat_temp_max, bat_temp_spread, bat_current_abs, Load discharge time_inc, Mains charging time_inc, Solar charging time_inc
+RF {'n_estimators': 100, 'max_depth': 6, 'min_samples_split': 5, 'min_samples_leaf': 4}
+XGB {'n_estimators': 150, 'max_depth': 4, 'learning_rate': 0.1, 'min_child_weight': 1}
+IF {'n_estimators': 100, 'max_samples': 512, 'contamination': 0.05, 'max_features': 0.15}
+混合：孿生 0.00、閾值 0.260、閘門 不開（驗證 F1 0.8099）
+
+                        模型  Precision   Recall       F1  Accuracy  TP   FP  FN    訓練耗時(ms)
+     Isolation Forest（對照組）   0.040207 0.546875 0.074906  0.589116  70 1671  58  130.759001
+     Random Forest + SMOTE   1.000000 0.718750 0.836364  0.991445  92    0  36  153.730631
+XGBoost + scale_pos_weight   0.834711 0.789062 0.811245  0.988831 101   20  27   83.115816
+                  LightGBM   1.000000 0.765625 0.867257  0.992871  98    0  30  291.896582
+                     監督式集成   1.000000 0.765625 0.867257  0.992871  98    0  30         NaN
+                     孿生：IF   0.042105 0.031250 0.035874  0.948907   4   91 124         NaN
+                     孿生：AE   0.519553 0.726562 0.605863  0.971245  93   86  35         NaN
+                    孿生：PCA   0.838384 0.648438 0.731278  0.985504  83   16  45         NaN
+                 孿生：PV發電殘差   0.045455 0.007812 0.013333  0.964829   1   21 127         NaN
+                 孿生：電池溫度殘差   0.948454 0.718750 0.817778  0.990257  92    5  36         NaN
+                 孿生：電池電壓殘差   0.000000 0.000000 0.000000  0.964116   0   23 128         NaN
+                孿生：PV功率一致性   0.000000 0.000000 0.000000  0.968869   0    3 128         NaN
+                孿生：電池功率一致性   0.000000 0.000000 0.000000  0.969582   0    0 128         NaN
+                孿生：放電功率一致性   0.000000 0.000000 0.000000  0.968631   0    4 128         NaN
+                孿生：市電充電一致性   0.000000 0.000000 0.000000  0.969344   0    1 128         NaN
+                  數位孿生（合併）   0.510870 0.734375 0.602564  0.970532  94   90  34 1792.333841
+               Hybrid（本研究）   0.767123 0.875000 0.817518  0.988118 112   34  16         NaN
+
+Hybrid ROC-AUC 0.9738、PR-AUC 0.8887
+多分類：RandomForest，Accuracy 0.8705、Macro F1 0.6603

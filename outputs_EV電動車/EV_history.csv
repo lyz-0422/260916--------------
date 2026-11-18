@@ -1,0 +1,4 @@
+﻿event_time,charger,name,current_a,voltage_v,soc,soh,max_temp_c,psu_current_a,load_current_a,output_on,battery_state,energy_flow,mode,dq_ok,dq_issues,message_id
+2026-11-16 14:00:00,charger_1,動力輪組櫃,9.8,100.28,56,99,26,10.0,0.2,1,充電中,充電中：台電,自動雙向,True,,charger-20261116-140000
+2026-11-16 14:00:00,charger_2,電子負載櫃,9.86,100.56,66,99,26,9.95,0.09,1,充電中,充電中：台電,自動雙向,True,,charger-20261116-140000
+2026-11-16 14:00:00,charger_3,雙向直流負載櫃,-0.02,99.08,59,99,26,,,1,待機,待機,自動雙向,True,,charger-20261116-140000

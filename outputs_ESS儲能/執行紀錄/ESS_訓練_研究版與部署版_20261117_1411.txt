@@ -1,0 +1,690 @@
+[ESS] ESS_訓練_研究版與部署版　開始 2026-11-17 14:11:13
+
+======================================================================
+   【階段一】EMS 異常檢測系統 — 歷史資料 × 模擬異常 離線訓練
+   特徵模式: 含模擬電池診斷特徵（原始模式）
+======================================================================
+
+=== 讀取歷史 CSV：D:\260916數位孿生目前最終版計劃案代碼\251022-260831csv ===
+  找到 314 個檔案
+  定義檢查（ESS≠0 的資料）：調度前=調節後+ESS 符合 100.0%｜調度前=調節後−ESS 符合 0.0%
+✓ 歷史資料讀取完成：25783 筆（略過 0 個檔案）
+  時間範圍：2025-10-22 00:00:00 ~ 2026-08-31 23:45:00
+  平均契約容量：163.4 kW（現場實際簽約值）
+
+✓ 混搭完成：25783 筆（真實負載/SOC/ESS功率 + 模擬電池診斷異常）
+  異常率: 7.99%
+
+異常類型分布:
+  normal                : 23724 筆 (92.0%)
+  internal_short        :   710 筆 (2.8%)
+  cell_inconsistency    :   686 筆 (2.7%)
+  soh_degradation       :   663 筆 (2.6%)
+
+=== 進階特徵工程 ===
+  滑動視窗大小: [4, 8, 12, 24]
+✓ 特徵工程完成，總欄數: 79
+  選擇特徵數: 70 (含模擬電池診斷特徵（原始模式）)
+  ✓ NaN/Inf 安全網：無殘留缺失值
+  選擇特徵數: 70 (含模擬電池診斷特徵（原始模式）)
+
+訓練集: 18048 筆 (異常: 1444)
+測試集: 7735 筆 (異常: 615)
+
+======================================================================
+   混合檢測器（新增模型版：IF/RF/XGB + LightGBM + 數位孿生）
+======================================================================
+
+======================================================================
+   自動特徵數量優化 (肘部法則)
+======================================================================
+
+測試特徵數量範圍: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+  k= 5: F1=0.8214
+  k=10: F1=0.9557
+  k=15: F1=0.9729
+  k=20: F1=0.9709
+  k=25: F1=0.9767
+  k=30: F1=0.9708
+  k=35: F1=0.9708
+  k=40: F1=0.9686
+  k=45: F1=0.9686
+  k=50: F1=0.9728
+
+  選擇方法: 邊際收益飽和（門檻=0.0143）
+
+✓ 最佳特徵數量: k=25 (F1=0.9767)
+✓ 肘部圖已保存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\研究_含模擬特徵\feature_selection_elbow.png
+
+=== 特徵選擇 (保留前 25 個) ===
+✓ 選擇 25 個特徵
+
+前5個最重要特徵:
+  self_dis_high: 0.0731
+  self_discharge_rate: 0.0719
+  cell_v_high_flag: 0.0712
+  cell_v_diff: 0.0708
+  soc_change_rate: 0.0288
+
+訓練集: 14439 筆
+驗證集: 3609 筆
+測試集: 7735 筆
+
+=== Isolation Forest 參數優化 ===
+  總共測試 48 種參數組合...
+    進度: 12/48
+    進度: 24/48
+    進度: 36/48
+    進度: 48/48
+
+  ✓ 最佳參數 (F1=0.4544):
+    n_estimators: 200
+    max_samples: 512
+    contamination: 0.05
+    max_features: 0.3
+
+  前5名參數組合:
+ n_estimators  max_samples  contamination  max_features  precision   recall       f1  accuracy
+          200          512           0.05           0.3   0.511962 0.408397 0.454352  0.928789
+          200          512           0.08           0.3   0.382920 0.530534 0.444800  0.903851
+          200          256           0.05           0.3   0.481818 0.404580 0.439834  0.925187
+          100          256           0.05           0.3   0.470320 0.393130 0.428274  0.923802
+          200          256           0.12           0.3   0.319312 0.637405 0.425478  0.875035
+
+=== Random Forest 參數優化 ===
+  總共測試 48 種參數組合...
+    進度: 12/48
+    進度: 24/48
+    進度: 36/48
+    進度: 48/48
+
+  ✓ 最佳參數 (F1=0.9767):
+    n_estimators: 100
+    max_depth: 10
+    min_samples_split: 5
+    min_samples_leaf: 4
+
+  前5名參數組合:
+ n_estimators  max_depth  min_samples_split  min_samples_leaf  precision   recall       f1  accuracy
+          200         10                 10                 4   0.992126 0.961832 0.976744  0.996675
+          200         10                 10                 8   0.992126 0.961832 0.976744  0.996675
+          200         10                  5                 8   0.992126 0.961832 0.976744  0.996675
+          200         10                  5                 4   0.992126 0.961832 0.976744  0.996675
+          100         10                 10                 4   0.992126 0.961832 0.976744  0.996675
+
+=== XGBoost 參數優化 ===
+  scale_pos_weight=11.22 (原始不平衡數據，無 SMOTE)
+  總共測試 48 種參數組合...
+    進度: 12/48
+    進度: 24/48
+    進度: 36/48
+    進度: 48/48
+
+  ✓ 最佳參數 (F1=0.9809):
+    n_estimators: 150
+    max_depth: 4
+    learning_rate: 0.1
+    min_child_weight: 1
+
+  前5名參數組合:
+ n_estimators  max_depth  learning_rate  min_child_weight  precision   recall       f1  accuracy
+          150          4            0.1                 3   0.980916 0.980916 0.980916  0.997229
+          150          4            0.1                 1   0.980916 0.980916 0.980916  0.997229
+          150          6            0.1                 5   0.980916 0.980916 0.980916  0.997229
+          150          6            0.1                 1   0.984615 0.977099 0.980843  0.997229
+          150          6            0.1                10   0.984615 0.977099 0.980843  0.997229
+
+=== 新 Hybrid 權重優化（驗證集）===
+  ✓ 孿生=0.80, 監督集成=0.20, 閾值=0.860
+  閘門候選（驗證集 F1）: 不開=0.9846, 0.0005=0.9789, 0.001=0.9733, 0.002=0.9659, 0.005=0.9534
+  ✓ 選擇閘門: 不開
+
+✅ 新 Hybrid 測試集結果:
+  Precision   : 0.9901
+  Recall      : 0.9724
+  F1          : 0.9811
+  Accuracy    : 0.9970
+
+   Model  Accuracy  Precision   Recall       F1   Train (ms)
+      IF  0.902650   0.373626 0.331707 0.351421   943.886995
+      RF  0.996639   0.994958 0.962602 0.978512  1215.036392
+     XGB  0.996380   0.980360 0.973984 0.977162   449.517727
+    LGBM  0.997156   0.994992 0.969106 0.981878  5647.649288
+ IF(僅正常)  0.917776   0.301887 0.026016 0.047904          NaN
+      AE  0.974014   1.000000 0.673171 0.804665          NaN
+     PCA  0.974014   1.000000 0.673171 0.804665          NaN
+ SOC物理殘差  0.934324   0.914729 0.191870 0.317204          NaN
+    Twin  0.985003   0.959484 0.847154 0.899827 26263.547421
+Ensemble  0.996897   0.978930 0.982114 0.980519          NaN
+  Hybrid  0.997027   0.990066 0.972358 0.981132          NaN
+  （IF(僅正常)/AE/PCA/SOC物理殘差/Twin 為數位孿生各分量；Ensemble = RF+XGB+LGBM 機率平均）
+
+======================================================================
+   多分類異常診斷模組
+======================================================================
+
+訓練集類別分布:
+  normal              : 16604 筆
+  cell_inconsistency  :   489 筆
+  internal_short      :   493 筆
+  soh_degradation     :   462 筆
+
+使用特徵數: 25 (沿用二元分類的最佳k=25)
+SMOTE 平衡後: 66416 筆 (k_neighbors=5)
+
+多分類超參數優化 → 訓練: 53133 | 驗證: 13283
+
+--- RandomForest 多分類（固定保守參數）---
+
+--- XGBoost 多分類超參數優化 ---
+  === XGBoost 多分類超參數優化 ===
+  測試 48 種組合...
+    進度: 12/48
+    進度: 24/48
+    進度: 36/48
+    進度: 48/48
+  ✓ 最佳參數 (F1 Macro=0.4988):
+    n_estimators: 200
+    max_depth: 8
+    learning_rate: 0.1
+    min_child_weight: 3
+  前5名:
+  n_estimators  max_depth  learning_rate  min_child_weight  F1_macro
+          200          8            0.1                 3  0.498811
+          200          6            0.1                 1  0.498736
+          200          8            0.1                 1  0.498717
+          200          6            0.1                 3  0.498622
+          200         10            0.1                 3  0.498603
+
+--- 訓練 XGBoost（多分類，最佳參數）---
+
+--- 訓練 LightGBM（多分類）---
+
+--- 訓練 Soft Voting 集成（RF+XGB+LGBM）---
+
+模型選擇 → 驗證集: 3609 筆（訓練期間最後 20%，真實資料）
+
+                Model  Val F1 (Macro)  Test Accuracy  Test F1 (Macro)  Train Time (ms)
+         RandomForest        0.949876       0.996897         0.984503      8975.519657
+              XGBoost        0.976451       0.997156         0.985795     15834.797859
+             LightGBM        0.976144       0.997285         0.986539     15830.998659
+Ensemble(RF+XGB+LGBM)        0.974606       0.997285         0.986474     27369.728088
+  （依驗證集 Macro F1 選擇；測試集欄位僅供報告，不參與選擇）
+
+✓ 選擇最佳模型（驗證集）: XGBoost
+                    precision    recall  f1-score   support
+
+            normal       1.00      1.00      1.00      7120
+cell_inconsistency       1.00      1.00      1.00       197
+    internal_short       1.00      1.00      1.00       217
+   soh_degradation       0.95      0.94      0.94       201
+
+          accuracy                           1.00      7735
+         macro avg       0.99      0.98      0.99      7735
+      weighted avg       1.00      1.00      1.00      7735
+
+
+✓ 多分類混淆矩陣已保存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\研究_含模擬特徵\multiclass_confusion_matrix.png
+
+======================================================================
+   最終結果 (Hybrid 混合檢測器)
+======================================================================
+  Precision   : 0.9901
+  Recall      : 0.9724
+  F1          : 0.9811
+  Accuracy    : 0.9970
+======================================================================
+   訓練報告：超參數選擇與偵測結果
+   特徵模式: 含模擬電池診斷特徵（原始模式）
+======================================================================
+
+【一、二元異常檢測】
+資料切分：訓練 14439 / 驗證 3609 / 測試 7735 筆（時間順序切分）
+特徵選擇：k = 25（肘部法則）
+  選用特徵: soc, soh, cell_v_diff, self_discharge_rate, cell_v_diff_ma, cell_v_diff_std, cell_v_diff_max, cell_v_high_flag, self_dis_ma, self_dis_std, self_dis_high, soh_diff, soh_soc_interact, soc_change_rate, dv_dq_proxy, soc_diff, soc_diff2, soc_mean_4, soc_std_4, soc_range_4, power_mean_8, soc_mean_12, power_std_24, soc_power_interaction, power_extreme
+
+1. 超參數（皆以驗證集 F1 選出）
+  IF   : {'n_estimators': 200, 'max_samples': 512, 'contamination': 0.05, 'max_features': 0.3}
+  RF   : {'n_estimators': 100, 'max_depth': 10, 'min_samples_split': 5, 'min_samples_leaf': 4}（+ SMOTE, class_weight=balanced）
+  XGB  : {'n_estimators': 150, 'max_depth': 4, 'learning_rate': 0.1, 'min_child_weight': 1}（subsample=0.85, colsample_bytree=0.8, scale_pos_weight=負/正樣本比）
+  LGBM : n_estimators=300, learning_rate=0.05, num_leaves=31, scale_pos_weight=負/正樣本比（固定參數）
+  數位孿生（只用正常資料訓練）:
+    - IF: n_estimators=200, max_samples=min(512,N)，只用正常資料
+    - AE: MLP 隱藏層 (34, 17, 34), max_iter=80, early_stopping
+    - PCA: 保留 95% 變異 → 26 個主成分
+    - SOC物理殘差: HistGradientBoostingRegressor(max_iter=200)，輸入 ess_power/前一刻ess_power/前一刻SOC/hour
+
+2. 新 Hybrid 組合方式（驗證集決定）
+  分數 = 0.80 × 孿生 + 0.20 × 監督集成(RF+XGB+LGBM)
+  加權分數門檻 = 0.860
+  孿生閘門 = 不開
+    候選 不開: 驗證 F1 = 0.9846
+    候選 0.0005: 驗證 F1 = 0.9789
+    候選 0.001: 驗證 F1 = 0.9733
+    候選 0.002: 驗證 F1 = 0.9659
+    候選 0.005: 驗證 F1 = 0.9534
+  權重搜尋前 5 名（驗證集）:
+ twin_weight  sup_weight  threshold     f1
+        0.80        0.20       0.86 0.9846
+        0.65        0.35       0.77 0.9846
+        0.70        0.30       0.80 0.9846
+        0.75        0.25       0.83 0.9846
+        0.60        0.40       0.74 0.9846
+
+3. 測試集偵測結果
+   Model  Accuracy  Precision  Recall     F1  Train (ms)
+      IF    0.9027     0.3736  0.3317 0.3514    943.8870
+      RF    0.9966     0.9950  0.9626 0.9785   1215.0364
+     XGB    0.9964     0.9804  0.9740 0.9772    449.5177
+    LGBM    0.9972     0.9950  0.9691 0.9819   5647.6493
+ IF(僅正常)    0.9178     0.3019  0.0260 0.0479         NaN
+      AE    0.9740     1.0000  0.6732 0.8047         NaN
+     PCA    0.9740     1.0000  0.6732 0.8047         NaN
+ SOC物理殘差    0.9343     0.9147  0.1919 0.3172         NaN
+    Twin    0.9850     0.9595  0.8472 0.8998  26263.5474
+Ensemble    0.9969     0.9789  0.9821 0.9805         NaN
+  Hybrid    0.9970     0.9901  0.9724 0.9811         NaN
+  Hybrid 混淆矩陣：TN=7114  FP=6  FN=17  TP=598
+
+【二、多分類異常診斷】
+特徵選擇：SelectKBest(mutual_info) k = 25
+1. 超參數
+  RF   : n_estimators=100, max_depth=10, min_samples_leaf=2, class_weight=balanced（固定）
+  XGB  : {'n_estimators': 200, 'max_depth': 8, 'learning_rate': 0.1, 'min_child_weight': 3}（驗證集 Macro F1 選出）
+  LGBM : n_estimators=300, learning_rate=0.05, class_weight=balanced（固定）
+  集成 : Soft Voting（RF+XGB+LGBM 機率平均）
+
+2. 模型選擇（依驗證集 Macro F1；測試集欄位僅供報告）
+                Model  Val F1 (Macro)  Test Accuracy  Test F1 (Macro)  Train Time (ms)
+         RandomForest          0.9499         0.9969           0.9845        8975.5197
+              XGBoost          0.9765         0.9972           0.9858       15834.7979
+             LightGBM          0.9761         0.9973           0.9865       15830.9987
+Ensemble(RF+XGB+LGBM)          0.9746         0.9973           0.9865       27369.7281
+  ✓ 選用: XGBoost（Accuracy=0.9972, Macro F1=0.9858）
+
+3. 各類別偵測結果（選用模型）
+  類別                     Precision    Recall        F1      筆數
+  normal                    0.9982    0.9987    0.9985    7120
+  cell_inconsistency        1.0000    1.0000    1.0000     197
+  internal_short            1.0000    1.0000    1.0000     217
+  soh_degradation           0.9543    0.9353    0.9447     201
+  macro avg                 0.9881    0.9835    0.9858    7735
+  weighted avg              0.9971    0.9972    0.9971    7735
+
+✓ 報告已存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\研究_含模擬特徵\training_report.txt、binary_test_results.csv、multiclass_test_results.csv
+✓ 圖1 已保存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\研究_含模擬特徵\fig1_confusion_matrix.png
+✓ 圖2 已保存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\研究_含模擬特徵\fig2_final_metrics.png
+✓ 圖3 已保存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\研究_含模擬特徵\fig3_score_distribution.png
+✓ 圖4 已保存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\研究_含模擬特徵\fig4_roc_curve.png
+✓ 圖5 已保存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\研究_含模擬特徵\fig5_pr_curve.png
+✓ 圖7 已保存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\研究_含模擬特徵\fig7_test_comparison.png
+✓ 圖8 已保存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\研究_含模擬特徵\fig8_timeseries_anomaly.png
+
+✅ 全部圖表輸出完畢
+
+✓ 模型已存檔: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\研究_含模擬特徵\ems_model_bundle.joblib（特徵模式: 含模擬電池診斷特徵（原始模式）；研究/論文用，不給即時運行）
+
+======================================================================
+   本次輸出檔案（資料夾: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\研究_含模擬特徵）
+======================================================================
+  ✓ binary_test_results.csv                       1.0 KB
+  ✓ ems_model_bundle.joblib                   11462.7 KB
+  ✓ feature_selection_elbow.png                 134.7 KB
+  ✓ fig1_confusion_matrix.png                    48.1 KB
+  ✓ fig2_final_metrics.png                       39.4 KB
+  ✓ fig3_score_distribution.png                  51.8 KB
+  ✓ fig4_roc_curve.png                           62.0 KB
+  ✓ fig5_pr_curve.png                            38.5 KB
+  ✓ fig7_test_comparison.png                     64.8 KB
+  ✓ fig8_timeseries_anomaly.png                 148.1 KB
+  ✓ multiclass_confusion_matrix.png             152.0 KB
+  ✓ multiclass_test_results.csv                   0.4 KB
+  ✓ training_report.txt                           4.6 KB
+
+======================================================================
+   階段一總時長: 14.1 分鐘
+======================================================================
+
+======================================================================
+   【階段一】EMS 異常檢測系統 — 歷史資料 × 模擬異常 離線訓練
+   特徵模式: ★ 對照實驗：僅真實欄位衍生特徵
+======================================================================
+
+=== 讀取歷史 CSV：D:\260916數位孿生目前最終版計劃案代碼\251022-260831csv ===
+  找到 314 個檔案
+  定義檢查（ESS≠0 的資料）：調度前=調節後+ESS 符合 100.0%｜調度前=調節後−ESS 符合 0.0%
+✓ 歷史資料讀取完成：25783 筆（略過 0 個檔案）
+  時間範圍：2025-10-22 00:00:00 ~ 2026-08-31 23:45:00
+  平均契約容量：163.4 kW（現場實際簽約值）
+
+✓ 混搭完成：25783 筆（真實負載/SOC/ESS功率 + 模擬電池診斷異常）
+  異常率: 7.99%
+
+異常類型分布:
+  normal                : 23724 筆 (92.0%)
+  internal_short        :   710 筆 (2.8%)
+  cell_inconsistency    :   686 筆 (2.7%)
+  soh_degradation       :   663 筆 (2.6%)
+
+=== 進階特徵工程 ===
+  滑動視窗大小: [4, 8, 12, 24]
+✓ 特徵工程完成，總欄數: 79
+  選擇特徵數: 57 (僅真實欄位衍生特徵（對照實驗基準）)
+  ✓ NaN/Inf 安全網：無殘留缺失值
+  選擇特徵數: 57 (僅真實欄位衍生特徵（對照實驗基準）)
+  ★ 部署版：1396 筆電芯不一致/內部短路在真實欄位上不可見，標記為正常；只偵測健康度衰退
+
+訓練集: 18048 筆 (異常: 462)
+測試集: 7735 筆 (異常: 201)
+
+======================================================================
+   混合檢測器（新增模型版：IF/RF/XGB + LightGBM + 數位孿生）
+======================================================================
+
+======================================================================
+   自動特徵數量優化 (肘部法則)
+======================================================================
+
+測試特徵數量範圍: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+  k= 5: F1=0.9128
+  k=10: F1=0.9333
+  k=15: F1=0.8904
+  k=20: F1=0.8980
+  k=25: F1=0.9128
+  k=30: F1=0.9116
+  k=35: F1=0.8980
+  k=40: F1=0.8811
+  k=45: F1=0.8889
+  k=50: F1=0.9252
+
+  選擇方法: 邊際收益飽和（門檻=0.0040）
+
+✓ 最佳特徵數量: k=10 (F1=0.9333)
+✓ 肘部圖已保存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\部署_僅真實欄位\feature_selection_elbow.png
+
+=== 特徵選擇 (保留前 10 個) ===
+✓ 選擇 10 個特徵
+
+前5個最重要特徵:
+  dv_dq_proxy: 0.0584
+  soc_change_rate: 0.0573
+  soc_diff: 0.0573
+  soc: 0.0550
+  soc_diff2: 0.0487
+
+訓練集: 14439 筆
+驗證集: 3609 筆
+測試集: 7735 筆
+
+=== Isolation Forest 參數優化 ===
+  總共測試 48 種參數組合...
+    進度: 12/48
+    進度: 24/48
+    進度: 36/48
+    進度: 48/48
+
+  ✓ 最佳參數 (F1=0.1564):
+    n_estimators: 100
+    max_samples: 512
+    contamination: 0.08
+    max_features: 0.3
+
+  前5名參數組合:
+ n_estimators  max_samples  contamination  max_features  precision   recall       f1  accuracy
+          100          512           0.08           0.3   0.093671 0.474359 0.156448  0.889443
+          100          512           0.05           0.3   0.095406 0.346154 0.149584  0.914935
+          100          512           0.12           0.3   0.082892 0.602564 0.145736  0.847326
+          200          512           0.12           0.3   0.083495 0.551282 0.145025  0.859518
+          100          256           0.12           0.3   0.072874 0.461538 0.125874  0.861457
+
+=== Random Forest 參數優化 ===
+  總共測試 48 種參數組合...
+    進度: 12/48
+    進度: 24/48
+    進度: 36/48
+    進度: 48/48
+
+  ✓ 最佳參數 (F1=0.9299):
+    n_estimators: 200
+    max_depth: 8
+    min_samples_split: 5
+    min_samples_leaf: 4
+
+  前5名參數組合:
+ n_estimators  max_depth  min_samples_split  min_samples_leaf  precision   recall       f1  accuracy
+          200          8                  5                 4   0.924051 0.935897 0.929936  0.996952
+          100          8                 10                 4   0.901235 0.935897 0.918239  0.996398
+          100          8                  5                 8   0.901235 0.935897 0.918239  0.996398
+          100          8                 10                 8   0.901235 0.935897 0.918239  0.996398
+          200          8                 10                 8   0.901235 0.935897 0.918239  0.996398
+
+=== XGBoost 參數優化 ===
+  scale_pos_weight=36.60 (原始不平衡數據，無 SMOTE)
+  總共測試 48 種參數組合...
+    進度: 12/48
+    進度: 24/48
+    進度: 36/48
+    進度: 48/48
+
+  ✓ 最佳參數 (F1=0.9193):
+    n_estimators: 250
+    max_depth: 4
+    learning_rate: 0.05
+    min_child_weight: 10
+
+  前5名參數組合:
+ n_estimators  max_depth  learning_rate  min_child_weight  precision   recall       f1  accuracy
+          250          4           0.05                10   0.891566 0.948718 0.919255  0.996398
+          150          8           0.05                 1   0.945205 0.884615 0.913907  0.996398
+          250          4           0.05                 1   0.900000 0.923077 0.911392  0.996121
+          150          6           0.05                 3   0.921053 0.897436 0.909091  0.996121
+          250          4           0.05                 3   0.898734 0.910256 0.904459  0.995844
+
+=== 新 Hybrid 權重優化（驗證集）===
+  ✓ 孿生=0.70, 監督集成=0.30, 閾值=0.800
+  閘門候選（驗證集 F1）: 不開=0.9367, 0.0005=0.9193, 0.001=0.9091, 0.002=0.8876, 0.005=0.8475
+  ✓ 選擇閘門: 不開
+
+✅ 新 Hybrid 測試集結果:
+  Precision   : 0.9648
+  Recall      : 0.9552
+  F1          : 0.9600
+  Accuracy    : 0.9979
+
+   Model  Accuracy  Precision   Recall       F1  Train (ms)
+      IF  0.858565   0.072727 0.378109 0.121990  312.688112
+      RF  0.996122   0.905213 0.950249 0.927184 3279.366493
+     XGB  0.998190   0.969849 0.960199 0.965000  839.567423
+    LGBM  0.997544   0.973958 0.930348 0.951654  892.215967
+ IF(僅正常)  0.970524   0.034483 0.004975 0.008696         NaN
+      AE  0.974402   1.000000 0.014925 0.029412         NaN
+     PCA  0.973885   0.000000 0.000000 0.000000         NaN
+ SOC物理殘差  0.984357   0.934783 0.427861 0.587031         NaN
+    Twin  0.979703   0.744444 0.333333 0.460481 6505.258560
+Ensemble  0.997414   0.983957 0.915423 0.948454         NaN
+  Hybrid  0.997931   0.964824 0.955224 0.960000         NaN
+  （IF(僅正常)/AE/PCA/SOC物理殘差/Twin 為數位孿生各分量；Ensemble = RF+XGB+LGBM 機率平均）
+
+======================================================================
+   多分類異常診斷模組
+======================================================================
+
+訓練集類別分布:
+  normal              : 17586 筆
+  soh_degradation     :   462 筆
+
+使用特徵數: 10 (沿用二元分類的最佳k=10)
+SMOTE 平衡後: 35172 筆 (k_neighbors=5)
+
+多分類超參數優化 → 訓練: 28138 | 驗證: 7034
+
+--- RandomForest 多分類（固定保守參數）---
+
+--- XGBoost 多分類超參數優化 ---
+  === XGBoost 多分類超參數優化 ===
+  測試 48 種組合...
+    進度: 12/48
+    進度: 24/48
+    進度: 36/48
+    進度: 48/48
+  ✓ 最佳參數 (F1 Macro=0.4991):
+    n_estimators: 200
+    max_depth: 6
+    learning_rate: 0.1
+    min_child_weight: 1
+  前5名:
+  n_estimators  max_depth  learning_rate  min_child_weight  F1_macro
+          200          6           0.10                 1  0.499146
+          200          6           0.10                 3  0.499039
+          200         10           0.10                 1  0.499039
+          200         10           0.05                 3  0.499003
+          200          6           0.10                 5  0.499003
+
+--- 訓練 XGBoost（多分類，最佳參數）---
+
+--- 訓練 LightGBM（多分類）---
+
+--- 訓練 Soft Voting 集成（RF+XGB+LGBM）---
+
+模型選擇 → 驗證集: 3609 筆（訓練期間最後 20%，真實資料）
+
+                Model  Val F1 (Macro)  Test Accuracy  Test F1 (Macro)  Train Time (ms)
+         RandomForest        0.954137       0.997802         0.978239      2079.273701
+              XGBoost        0.957144       0.998061         0.980611       885.839701
+             LightGBM        0.949919       0.997673         0.977015      1169.975758
+Ensemble(RF+XGB+LGBM)        0.956596       0.998061         0.980705      3767.975330
+  （依驗證集 Macro F1 選擇；測試集欄位僅供報告，不參與選擇）
+
+✓ 選擇最佳模型（驗證集）: XGBoost
+                 precision    recall  f1-score   support
+
+         normal       1.00      1.00      1.00      7534
+soh_degradation       0.97      0.95      0.96       201
+
+       accuracy                           1.00      7735
+      macro avg       0.99      0.97      0.98      7735
+   weighted avg       1.00      1.00      1.00      7735
+
+
+✓ 多分類混淆矩陣已保存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\部署_僅真實欄位\multiclass_confusion_matrix.png
+
+======================================================================
+   最終結果 (Hybrid 混合檢測器)
+======================================================================
+  Precision   : 0.9648
+  Recall      : 0.9552
+  F1          : 0.9600
+  Accuracy    : 0.9979
+======================================================================
+   訓練報告：超參數選擇與偵測結果
+   特徵模式: ★ 對照實驗：僅真實欄位衍生特徵
+======================================================================
+
+【一、二元異常檢測】
+資料切分：訓練 14439 / 驗證 3609 / 測試 7735 筆（時間順序切分）
+特徵選擇：k = 10（肘部法則）
+  選用特徵: soc, soc_change_rate, dv_dq_proxy, soc_diff, soc_diff2, soc_mean_4, soc_std_4, soc_range_4, soc_std_8, soc_power_interaction
+
+1. 超參數（皆以驗證集 F1 選出）
+  IF   : {'n_estimators': 100, 'max_samples': 512, 'contamination': 0.08, 'max_features': 0.3}
+  RF   : {'n_estimators': 200, 'max_depth': 8, 'min_samples_split': 5, 'min_samples_leaf': 4}（+ SMOTE, class_weight=balanced）
+  XGB  : {'n_estimators': 250, 'max_depth': 4, 'learning_rate': 0.05, 'min_child_weight': 10}（subsample=0.85, colsample_bytree=0.8, scale_pos_weight=負/正樣本比）
+  LGBM : n_estimators=300, learning_rate=0.05, num_leaves=31, scale_pos_weight=負/正樣本比（固定參數）
+  數位孿生（只用正常資料訓練）:
+    - IF: n_estimators=200, max_samples=min(512,N)，只用正常資料
+    - AE: MLP 隱藏層 (28, 14, 28), max_iter=80, early_stopping
+    - PCA: 保留 95% 變異 → 20 個主成分
+    - SOC物理殘差: HistGradientBoostingRegressor(max_iter=200)，輸入 ess_power/前一刻ess_power/前一刻SOC/hour
+
+2. 新 Hybrid 組合方式（驗證集決定）
+  分數 = 0.70 × 孿生 + 0.30 × 監督集成(RF+XGB+LGBM)
+  加權分數門檻 = 0.800
+  孿生閘門 = 不開
+    候選 不開: 驗證 F1 = 0.9367
+    候選 0.0005: 驗證 F1 = 0.9193
+    候選 0.001: 驗證 F1 = 0.9091
+    候選 0.002: 驗證 F1 = 0.8876
+    候選 0.005: 驗證 F1 = 0.8475
+  權重搜尋前 5 名（驗證集）:
+ twin_weight  sup_weight  threshold     f1
+        0.70        0.30       0.80 0.9367
+        0.80        0.20       0.87 0.9342
+        0.85        0.15       0.92 0.9324
+        0.75        0.25       0.88 0.9324
+        0.90        0.10       0.94 0.9324
+
+3. 測試集偵測結果
+   Model  Accuracy  Precision  Recall     F1  Train (ms)
+      IF    0.8586     0.0727  0.3781 0.1220    312.6881
+      RF    0.9961     0.9052  0.9502 0.9272   3279.3665
+     XGB    0.9982     0.9698  0.9602 0.9650    839.5674
+    LGBM    0.9975     0.9740  0.9303 0.9517    892.2160
+ IF(僅正常)    0.9705     0.0345  0.0050 0.0087         NaN
+      AE    0.9744     1.0000  0.0149 0.0294         NaN
+     PCA    0.9739     0.0000  0.0000 0.0000         NaN
+ SOC物理殘差    0.9844     0.9348  0.4279 0.5870         NaN
+    Twin    0.9797     0.7444  0.3333 0.4605   6505.2586
+Ensemble    0.9974     0.9840  0.9154 0.9485         NaN
+  Hybrid    0.9979     0.9648  0.9552 0.9600         NaN
+  Hybrid 混淆矩陣：TN=7527  FP=7  FN=9  TP=192
+
+【二、多分類異常診斷】
+特徵選擇：SelectKBest(mutual_info) k = 10
+1. 超參數
+  RF   : n_estimators=100, max_depth=10, min_samples_leaf=2, class_weight=balanced（固定）
+  XGB  : {'n_estimators': 200, 'max_depth': 6, 'learning_rate': 0.1, 'min_child_weight': 1}（驗證集 Macro F1 選出）
+  LGBM : n_estimators=300, learning_rate=0.05, class_weight=balanced（固定）
+  集成 : Soft Voting（RF+XGB+LGBM 機率平均）
+
+2. 模型選擇（依驗證集 Macro F1；測試集欄位僅供報告）
+                Model  Val F1 (Macro)  Test Accuracy  Test F1 (Macro)  Train Time (ms)
+         RandomForest          0.9541         0.9978           0.9782        2079.2737
+              XGBoost          0.9571         0.9981           0.9806         885.8397
+             LightGBM          0.9499         0.9977           0.9770        1169.9758
+Ensemble(RF+XGB+LGBM)          0.9566         0.9981           0.9807        3767.9753
+  ✓ 選用: XGBoost（Accuracy=0.9981, Macro F1=0.9806）
+
+3. 各類別偵測結果（選用模型）
+  類別                     Precision    Recall        F1      筆數
+  normal                    0.9987    0.9993    0.9990    7534
+  soh_degradation           0.9745    0.9502    0.9622     201
+  macro avg                 0.9866    0.9748    0.9806    7735
+  weighted avg              0.9980    0.9981    0.9980    7735
+
+✓ 報告已存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\部署_僅真實欄位\training_report.txt、binary_test_results.csv、multiclass_test_results.csv
+✓ 圖1 已保存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\部署_僅真實欄位\fig1_confusion_matrix.png
+✓ 圖2 已保存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\部署_僅真實欄位\fig2_final_metrics.png
+✓ 圖3 已保存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\部署_僅真實欄位\fig3_score_distribution.png
+✓ 圖4 已保存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\部署_僅真實欄位\fig4_roc_curve.png
+✓ 圖5 已保存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\部署_僅真實欄位\fig5_pr_curve.png
+✓ 圖7 已保存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\部署_僅真實欄位\fig7_test_comparison.png
+✓ 圖8 已保存: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\部署_僅真實欄位\fig8_timeseries_anomaly.png
+
+✅ 全部圖表輸出完畢
+
+✓ 模型已存檔: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\部署_僅真實欄位\ems_model_bundle.joblib（特徵模式: ★ 對照實驗：僅真實欄位衍生特徵；【階段二】即時運行使用這份）
+
+======================================================================
+   本次輸出檔案（資料夾: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\部署_僅真實欄位）
+======================================================================
+  ✓ binary_test_results.csv                       1.0 KB
+  ✓ ems_model_bundle.joblib                   11139.9 KB
+  ✓ feature_selection_elbow.png                 167.1 KB
+  ✓ fig1_confusion_matrix.png                    48.1 KB
+  ✓ fig2_final_metrics.png                       40.5 KB
+  ✓ fig3_score_distribution.png                  54.0 KB
+  ✓ fig4_roc_curve.png                           62.8 KB
+  ✓ fig5_pr_curve.png                            39.0 KB
+  ✓ fig7_test_comparison.png                     70.5 KB
+  ✓ fig8_timeseries_anomaly.png                 133.7 KB
+  ✓ multiclass_confusion_matrix.png             118.8 KB
+  ✓ multiclass_test_results.csv                   0.4 KB
+  ✓ training_report.txt                           4.2 KB
+
+======================================================================
+   階段一總時長: 5.1 分鐘
+======================================================================
+
+✓ 【階段二】即時運行將使用部署版模型: d:\260916數位孿生目前最終版計劃案代碼\outputs_ESS儲能\部署_僅真實欄位\ems_model_bundle.joblib
+
+[ESS] ESS_訓練_研究版與部署版　完成，耗時 19.2 分鐘
